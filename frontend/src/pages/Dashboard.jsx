@@ -5,23 +5,27 @@ import {
 } from 'recharts';
 import client from '../api/client';
 import StatCard from '../components/StatCard.jsx';
+import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate } from '../utils/format.js';
 
 const PIE_COLORS = ['#2f5d50', '#b8933a', '#a6432d', '#6b8f87', '#c9a876', '#7a3f30', '#4a746a', '#8f6b2e'];
 
 export default function Dashboard() {
+  const { activeProfileId, activeProfile } = useProfiles();
   const [summary, setSummary] = useState(null);
   const [trends, setTrends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!activeProfileId) return;
     let cancelled = false;
+    setLoading(true);
     async function load() {
       try {
         const [summaryRes, trendsRes] = await Promise.all([
-          client.get('/dashboard/summary'),
-          client.get('/dashboard/trends?months=9'),
+          client.get('/dashboard/summary', { params: { profileId: activeProfileId } }),
+          client.get('/dashboard/trends', { params: { profileId: activeProfileId, months: 9 } }),
         ]);
         if (cancelled) return;
         setSummary(summaryRes.data);
@@ -34,9 +38,9 @@ export default function Dashboard() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [activeProfileId]);
 
-  if (loading) return <div className="empty-state">Loading your dashboard…</div>;
+  if (loading || !summary) return <div className="empty-state">Loading your dashboard…</div>;
   if (error) return <div className="empty-state">{error}</div>;
 
   const net = summary.net;
@@ -46,7 +50,7 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <div className="subtitle">This month at a glance</div>
+          <div className="subtitle">{activeProfile ? `${activeProfile.name} — this month at a glance` : 'This month at a glance'}</div>
         </div>
       </div>
 
@@ -60,16 +64,6 @@ export default function Dashboard() {
           hint={net >= 0 ? 'On track this month' : 'Spending exceeds income'}
         />
         <StatCard label="Largest Category" value={summary.largestCategory || '—'} />
-        <StatCard
-          label="Upcoming Bills"
-          value={summary.upcomingBills.count}
-          hint={formatMoney(summary.upcomingBills.total) + ' due'}
-        />
-        <StatCard
-          label="Active Subscriptions"
-          value={summary.activeSubscriptions.count}
-          hint={formatMoney(summary.activeSubscriptions.total) + ' / mo'}
-        />
       </div>
 
       <div className="chart-grid">

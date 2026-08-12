@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from 'recharts';
 import client from '../api/client';
+import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney } from '../utils/format.js';
 
 export default function Reports() {
+  const { activeProfileId, activeProfile } = useProfiles();
   const [months, setMonths] = useState(12);
   const [trends, setTrends] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!activeProfileId) return;
     let cancelled = false;
     setLoading(true);
-    client.get(`/dashboard/trends?months=${months}`).then((res) => {
+    client.get('/dashboard/trends', { params: { profileId: activeProfileId, months } }).then((res) => {
       if (!cancelled) { setTrends(res.data.trends); setLoading(false); }
     });
     return () => { cancelled = true; };
-  }, [months]);
+  }, [activeProfileId, months]);
 
   const totalIncome = trends.reduce((s, t) => s + (t.income || 0), 0);
   const totalExpenses = trends.reduce((s, t) => s + (t.expenses || 0), 0);
@@ -26,7 +29,7 @@ export default function Reports() {
       <div className="page-header">
         <div>
           <h1>Reports</h1>
-          <div className="subtitle">Spending trends over time</div>
+          <div className="subtitle">{activeProfile ? `${activeProfile.name} — spending trends over time` : 'Spending trends over time'}</div>
         </div>
         <div className="form-field" style={{ minWidth: 160 }}>
           <select value={months} onChange={(e) => setMonths(Number(e.target.value))}>

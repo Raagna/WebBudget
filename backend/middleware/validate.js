@@ -33,6 +33,16 @@ function fromCents(cents) {
   return Math.round(cents) / 100;
 }
 
+// Used by bulk endpoints: an array of 1-200 positive integers.
+function isIdArray(v) {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.length <= 200 &&
+    v.every((n) => Number.isInteger(n) && n > 0)
+  );
+}
+
 function validateBody(rules) {
   return (req, res, next) => {
     const errors = [];
@@ -52,6 +62,7 @@ module.exports = {
   isValidEmail,
   isValidDate,
   isPositiveAmount,
+  isIdArray,
   toCents,
   fromCents,
   validateBody,

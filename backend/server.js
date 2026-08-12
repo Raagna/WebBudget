@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categories');
+const profileRoutes = require('./routes/profiles');
 const transactionRoutes = require('./routes/transactions');
 const subscriptionRoutes = require('./routes/subscriptions');
 const billRoutes = require('./routes/bills');
@@ -27,6 +28,7 @@ const authLimiter = rateLimit({
 app.use('/api/auth', authLimiter, authRoutes);
 
 app.use('/api/categories', categoryRoutes);
+app.use('/api/profiles', profileRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/bills', billRoutes);

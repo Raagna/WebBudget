@@ -13,8 +13,27 @@ function monthBounds(yyyyMm) {
   return { start, end };
 }
 
-// GET /api/dashboard/summary?month=YYYY-MM  (defaults to current month)
+// All dashboard figures are scoped to one profile at a time, so switching
+// profiles in the UI shows an entirely separate financial picture.
+function requireOwnedProfile(req, res) {
+  const profileId = Number(req.query.profileId);
+  if (!Number.isInteger(profileId) || profileId <= 0) {
+    res.status(400).json({ error: 'A valid profileId is required' });
+    return null;
+  }
+  const owned = db.prepare('SELECT id FROM profiles WHERE id = ? AND user_id = ?').get(profileId, req.userId);
+  if (!owned) {
+    res.status(404).json({ error: 'Profile not found' });
+    return null;
+  }
+  return profileId;
+}
+
+// GET /api/dashboard/summary?profileId=&month=YYYY-MM  (month defaults to current)
 router.get('/summary', (req, res) => {
+  const profileId = requireOwnedProfile(req, res);
+  if (profileId === null) return;
+
   const month = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const { start, end } = monthBounds(month);
 
@@ -22,10 +41,10 @@ router.get('/summary', (req, res) => {
     .prepare(
       `SELECT type, COALESCE(SUM(amount_cents), 0) AS total
        FROM transactions
-       WHERE user_id = ? AND occurred_on BETWEEN ? AND ?
+       WHERE profile_id = ? AND occurred_on BETWEEN ? AND ?
        GROUP BY type`
     )
-    .all(req.userId, start, end);
+    .all(profileId, start, end);
 
   const income = fromCents(totals.find((t) => t.type === 'income')?.total || 0);
   const expenses = fromCents(totals.find((t) => t.type === 'expense')?.total || 0);
@@ -35,22 +54,22 @@ router.get('/summary', (req, res) => {
       `SELECT c.name AS category, COALESCE(SUM(t.amount_cents), 0) AS total
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ? AND t.type = 'expense' AND t.occurred_on BETWEEN ? AND ?
+       WHERE t.profile_id = ? AND t.type = 'expense' AND t.occurred_on BETWEEN ? AND ?
        GROUP BY t.category_id
        ORDER BY total DESC`
     )
-    .all(req.userId, start, end)
+    .all(profileId, start, end)
     .map((r) => ({ category: r.category || 'Uncategorized', total: fromCents(r.total) }));
 
   const recent = db
     .prepare(
       `SELECT t.id, t.amount_cents, t.type, t.description, t.occurred_on, c.name AS category_name
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ?
+       WHERE t.profile_id = ?
        ORDER BY t.occurred_on DESC, t.id DESC
        LIMIT 8`
     )
-    .all(req.userId)
+    .all(profileId)
     .map((r) => ({
       id: r.id,
       amount: fromCents(r.amount_cents),
@@ -60,20 +79,6 @@ router.get('/summary', (req, res) => {
       category: r.category_name || 'Uncategorized',
     }));
 
-  const upcomingBills = db
-    .prepare(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS total
-       FROM bills WHERE user_id = ? AND is_paid = 0 AND due_on >= date('now')`
-    )
-    .get(req.userId);
-
-  const activeSubscriptions = db
-    .prepare(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS total
-       FROM subscriptions WHERE user_id = ? AND is_active = 1`
-    )
-    .get(req.userId);
-
   res.json({
     month,
     income,
@@ -82,24 +87,25 @@ router.get('/summary', (req, res) => {
     largestCategory: byCategory[0]?.category || null,
     spendingByCategory: byCategory,
     recentTransactions: recent,
-    upcomingBills: { count: upcomingBills.n, total: fromCents(upcomingBills.total) },
-    activeSubscriptions: { count: activeSubscriptions.n, total: fromCents(activeSubscriptions.total) },
   });
 });
 
-// GET /api/dashboard/trends?months=6  -> income vs expenses per month
+// GET /api/dashboard/trends?profileId=&months=6  -> income vs expenses per month
 router.get('/trends', (req, res) => {
+  const profileId = requireOwnedProfile(req, res);
+  if (profileId === null) return;
+
   const months = Math.min(Math.max(parseInt(req.query.months, 10) || 6, 1), 24);
 
   const rows = db
     .prepare(
       `SELECT strftime('%Y-%m', occurred_on) AS month, type, COALESCE(SUM(amount_cents), 0) AS total
        FROM transactions
-       WHERE user_id = ? AND occurred_on >= date('now', ?)
+       WHERE profile_id = ? AND occurred_on >= date('now', ?)
        GROUP BY month, type
        ORDER BY month ASC`
     )
-    .all(req.userId, `-${months} months`);
+    .all(profileId, `-${months} months`);
 
   const byMonth = new Map();
   for (const r of rows) {

@@ -26,9 +26,18 @@ router.post(
     }
 
     const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
-    const info = db
-      .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
-      .run(name.trim(), normalizedEmail, passwordHash);
+
+    // Create the user and their first profile together so they always
+    // land on a working "Personal" budget with nowhere-to-put-a-transaction
+    // gaps in the UI.
+    const createUserWithProfile = db.transaction(() => {
+      const userInfo = db
+        .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
+        .run(name.trim(), normalizedEmail, passwordHash);
+      db.prepare('INSERT INTO profiles (user_id, name) VALUES (?, ?)').run(userInfo.lastInsertRowid, 'Personal');
+      return userInfo;
+    });
+    const info = createUserWithProfile();
 
     const token = signToken(info.lastInsertRowid);
     res.status(201).json({
@@ -56,6 +65,14 @@ router.post(
 
     if (!user || !valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Defensive backfill: an account created before profiles existed
+    // (or restored from an old backup) might have none. Give it one
+    // rather than leaving the user stuck with nowhere to log a transaction.
+    const profileCount = db.prepare('SELECT COUNT(*) AS n FROM profiles WHERE user_id = ?').get(user.id).n;
+    if (profileCount === 0) {
+      db.prepare('INSERT INTO profiles (user_id, name) VALUES (?, ?)').run(user.id, 'Personal');
     }
 
     const token = signToken(user.id);

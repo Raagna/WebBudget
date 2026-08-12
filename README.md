@@ -50,23 +50,43 @@ Layers are kept separate on purpose:
 ## Database schema
 
 ```
-users            id, name, email (unique), password_hash, created_at
-categories       id, user_id (NULL = global default), name, type, icon, is_default
-transactions     id, user_id, category_id, amount_cents, type, description,
-                 occurred_on, is_recurring, recurring_interval
-subscriptions    id, user_id, category_id, name, amount_cents, billing_cycle,
-                 next_billing_on, is_active
-bills            id, user_id, category_id, name, amount_cents, due_on,
-                 is_paid, is_recurring
+users              id, name, email (unique), password_hash, created_at
+profiles           id, user_id, name, created_at
+categories         id, user_id (NULL = global default), name, type, icon, is_default
+hidden_categories  user_id, category_id  (per-user hide of a default category)
+transactions       id, user_id, profile_id, category_id, amount_cents, type,
+                   description, occurred_on, is_recurring, recurring_interval
+subscriptions      id, user_id, category_id, name, amount_cents, billing_cycle,
+                   next_billing_on, is_active   (API only, not in the UI)
+bills              id, user_id, category_id, name, amount_cents, due_on,
+                   is_paid, is_recurring         (API only, not in the UI)
 ```
 
 Full DDL: `backend/db/schema.sql`. Notes:
 - Amounts are stored as **integer cents**, never floats, to avoid rounding
   errors when summing totals.
 - Every financial table has `user_id NOT NULL REFERENCES users(id)`.
+- **Profiles** are separate budgeting contexts (e.g. "Personal" and
+  "Household") owned by one user. Every transaction belongs to exactly one
+  profile; switching the active profile in the sidebar switches the entire
+  dashboard, transaction list, and reports to that profile's data.
+  Categories are *not* profile-scoped — a user manages one category list
+  shared across all of their profiles.
 - Categories are global (`user_id IS NULL`) for the 12 predefined ones, or
   scoped to a user for custom ones — queried as a `UNION`-style `WHERE
   user_id IS NULL OR user_id = ?`.
+- **Known bug, fixed:** the original schema relied on `UNIQUE(user_id, name)`
+  to stop duplicate default categories. SQLite treats every `NULL` as
+  distinct from every other `NULL`, so that constraint never actually
+  caught duplicates among the global (`user_id IS NULL`) rows — each server
+  restart silently re-inserted all 12 defaults. Fixed with a **partial
+  unique index**: `CREATE UNIQUE INDEX ... ON categories(name) WHERE
+  user_id IS NULL`. If you have an old database file, delete it and re-seed
+  rather than trying to migrate in place (see Setup below).
+- A user can remove a default category from their own view via
+  `hidden_categories` without deleting the shared row (which would remove
+  it for every other account on the instance) — Settings offers a
+  "Restore" action for anything hidden this way.
 
 ## API endpoints
 
@@ -76,17 +96,25 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 |---|---|---|
 | POST | `/api/auth/register` | Create account, returns JWT |
 | POST | `/api/auth/login` | Returns JWT |
-| GET | `/api/categories` | Default + user's custom categories |
+| GET | `/api/categories` | Default + user's custom categories, minus anything hidden |
 | POST | `/api/categories` | Create a custom category |
-| DELETE | `/api/categories/:id` | Delete own custom category |
-| GET | `/api/transactions` | List with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` |
-| POST | `/api/transactions` | Create |
+| DELETE | `/api/categories/:id` | Delete own custom category, or hide a default one for this user |
+| GET | `/api/categories/hidden` | List default categories this user has hidden |
+| POST | `/api/categories/:id/restore` | Un-hide a previously hidden default category |
+| GET | `/api/profiles` | List this user's budgeting profiles |
+| POST | `/api/profiles` | Create a profile `{ name }` |
+| PUT | `/api/profiles/:id` | Rename a profile |
+| DELETE | `/api/profiles/:id` | Delete a profile and its transactions (blocked if it's the user's last one) |
+| GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` |
+| POST | `/api/transactions` | Create — body includes `profileId` |
 | PUT | `/api/transactions/:id` | Update (only if owned) |
 | DELETE | `/api/transactions/:id` | Delete (only if owned) |
-| GET/POST/PUT/DELETE | `/api/subscriptions[/:id]` | Same pattern |
-| GET/POST/PUT/DELETE | `/api/bills[/:id]` | Same pattern |
-| GET | `/api/dashboard/summary?month=YYYY-MM` | Totals, spending by category, recent transactions, upcoming bills, active subscriptions |
-| GET | `/api/dashboard/trends?months=N` | Income vs. expenses per month, for charts |
+| POST | `/api/transactions/bulk-delete` | Delete many at once: `{ ids: [...] }` — multi-select in the UI |
+| PATCH | `/api/transactions/bulk-update` | Bulk-edit category and/or recurring flag: `{ ids: [...], categoryId?, isRecurring? }` |
+| GET/POST/PUT/DELETE | `/api/subscriptions[/:id]` | Available in the API; not currently linked from the UI |
+| GET/POST/PUT/DELETE | `/api/bills[/:id]` | Available in the API; not currently linked from the UI |
+| GET | `/api/dashboard/summary?profileId=&month=YYYY-MM` | Totals, spending by category, recent transactions — scoped to one profile |
+| GET | `/api/dashboard/trends?profileId=&months=N` | Income vs. expenses per month, for charts — scoped to one profile |
 
 ## Authentication & security
 
@@ -116,46 +144,64 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 
 ```
 frontend/src/
-  api/client.js          axios instance, attaches JWT, redirects to /login on 401
-  context/AuthContext.jsx login/register/logout state, persisted to localStorage
+  api/client.js            axios instance, attaches JWT, redirects to /login on 401
+  context/
+    AuthContext.jsx        login/register/logout state, persisted to localStorage
+    ProfileContext.jsx     list of profiles + active profile, persisted to localStorage
   components/
-    Layout.jsx            sidebar + page shell
-    StatCard.jsx           dashboard summary tile
-    TransactionForm.jsx    shared add/edit form
+    Layout.jsx              sidebar + page shell + profile switcher
+    StatCard.jsx             dashboard summary tile
+    TransactionForm.jsx      shared add/edit form
   pages/
     Login.jsx / Register.jsx
-    Dashboard.jsx           summaries + charts
-    Transactions.jsx        filterable/sortable ledger (reused for Income/Expenses)
-    Subscriptions.jsx
-    Bills.jsx
-    Reports.jsx             longer-range trend charts
-    Settings.jsx            custom categories
-  utils/format.js          money/date formatting helpers
-  styles.css                design tokens + all component styles
+    Dashboard.jsx            summaries + charts (scoped to active profile)
+    Transactions.jsx         filterable/sortable ledger with multi-select bulk actions
+    Reports.jsx              longer-range trend charts
+    Profiles.jsx             create/rename/delete budgeting profiles
+    Settings.jsx             category management (add/remove/hide/restore)
+  utils/format.js            money/date formatting helpers
+  styles.css                  design tokens + all component styles
 ```
+
+**Note:** `Subscriptions.jsx` and `Bills.jsx` pages were removed along with
+their sidebar links to keep navigation focused on transactions. The
+underlying `/api/subscriptions` and `/api/bills` endpoints are still there
+if you want to bring the UI back later.
 
 ## Dashboard & financial features
 
-- **Summary tiles**: monthly income, expenses, remaining, largest category,
-  upcoming bills, active subscriptions.
+- **Multi-household budgeting**: create separate **profiles** (e.g.
+  "Personal" and "Household") from the Profiles tab. Each profile has its
+  own transactions, dashboard, and reports — switching profiles in the
+  sidebar switches the entire financial picture. A user always keeps at
+  least one profile; deleting a profile deletes its transactions with a
+  confirmation first.
+- **Summary tiles**: monthly income, expenses, remaining, and largest
+  category for the active profile.
 - **Charts**: income vs. expenses line chart (Dashboard, last 9 months),
   category pie chart (current month), category bar chart, and a
   longer-range Reports page with an area chart and net-by-month bar chart.
-- **Filtering/sorting**: transactions can be filtered by category and date
-  range, and sorted by date, amount, or description, ascending or
+- **Filtering/sorting**: transactions can be filtered by **type**
+  (income/expense — a filter now, not a separate page), category, and date
+  range, and sorted by date, amount, description, or type, ascending or
   descending.
-- **Recurring tracking**: transactions, subscriptions, and bills all support
-  a recurring flag; subscriptions can be paused/resumed, bills can be marked
-  paid/unpaid.
+- **Multi-select bulk actions**: check multiple transactions in the ledger
+  to bulk-delete them or bulk-reassign their category in one action.
+- **Recurring tracking**: transactions support a recurring flag with an
+  interval (weekly/monthly/yearly).
+- **Category management**: add custom categories, remove your own, or hide
+  a built-in default from your view (reversible — see Settings).
 
 ## Database seed data
 
 `backend/seed.js` creates one demo account
-(`demo@example.com` / `DemoPass123!`) with ~9 months of clearly fictional
-transaction history (salary, groceries, rent, subscriptions, occasional
-freelance income with random variance so months aren't identical), 6 sample
-subscriptions, and 5 bills (some paid, some upcoming) — enough for every
-chart and filter to show real data immediately.
+(`demo@example.com` / `DemoPass123!`) with **two profiles** — "Personal"
+and "Household" — and ~9 months of clearly fictional transaction history
+split realistically between them (rent, shared utilities, and groceries in
+Household; subscriptions, entertainment, and the user's own salary in
+Personal, with random variance so months aren't identical). It also seeds a
+few sample subscriptions and bills through the API for completeness, even
+though those aren't currently linked from the UI.
 
 ## Project file structure
 
@@ -198,26 +244,48 @@ npm run dev               # http://localhost:5173
 Open `http://localhost:5173` and sign in with the demo account, or register
 a new one.
 
+**Upgrading from an earlier copy of this project?** The schema changed
+(added `profiles` and `hidden_categories`, added `transactions.profile_id`,
+and fixed the category-duplication bug). Rather than migrating an existing
+`backend/db/finance.db` in place, delete it and re-seed:
+
+```bash
+cd backend
+rm -f db/finance.db db/finance.db-shm db/finance.db-wal
+npm run seed
+```
+
 ## Testing instructions
 
 Manual flows to verify (all confirmed working during development):
 
-1. **Register** a new account → lands on Dashboard with zero data.
+1. **Register** a new account → lands on Dashboard with a "Personal"
+   profile auto-created and zero data.
 2. **Add a transaction** (income and expense) → appears in Dashboard recent
    list and Transactions page; totals update.
 3. **Edit / delete** a transaction → list and totals update immediately.
-4. **Filter transactions** by category and date range; **sort** by amount
-   ascending/descending.
-5. **Add a subscription**, pause it, confirm the Dashboard's "Active
-   Subscriptions" count and total update.
-6. **Add a bill**, mark it paid, confirm "Upcoming Bills" count drops.
-7. **Data isolation**: register a second account in a private/incognito
+4. **Filter transactions** by type, category, and date range; **sort** by
+   amount, date, description, or type, ascending/descending.
+5. **Multi-select**: check several transactions, bulk-delete them, and
+   separately bulk-reassign a category — confirm the count in the toolbar
+   matches what changed.
+6. **Profiles**: create a second profile (e.g. "Household"), add a
+   transaction while it's active, switch back to "Personal" and confirm
+   that transaction is *not* visible there. Try deleting your only
+   remaining profile — should be blocked with a clear message.
+7. **Categories**: add a custom category; hide a default category from
+   Settings and confirm it disappears from the add-transaction dropdown;
+   restore it and confirm it reappears.
+8. **Category duplication regression check**: restart the backend server
+   two or three times in a row, then reload Settings — the category count
+   should stay at 12 (+ any custom ones), never grow.
+9. **Data isolation**: register a second account in a private/incognito
    window, confirm it starts empty and cannot see or modify the first
-   account's data (try hitting `PUT /api/transactions/:id` for another
-   user's transaction ID — should 404).
-8. **Auth**: log out, confirm protected pages redirect to `/login`; try a
-   wrong password, confirm a generic error with no hint about account
-   existence.
+   account's data or profiles (try hitting `PUT /api/transactions/:id` or
+   `GET /api/transactions?profileId=` for another user's ID — should 404).
+10. **Auth**: log out, confirm protected pages redirect to `/login`; try a
+    wrong password, confirm a generic error with no hint about account
+    existence.
 
 For automated backend testing, `curl` or a tool like Postman can exercise
 the endpoints in the API table above — every route returns JSON and
@@ -229,10 +297,13 @@ standard HTTP status codes (`400` invalid input, `401` unauthenticated,
 - Swap SQLite for Postgres for concurrent multi-instance deployments (the
   parameterized-query style ports directly).
 - Add refresh tokens / shorter-lived access tokens instead of a single 7-day JWT.
+- **Shared household profiles**: profiles currently belong to a single
+  user. A real multi-person household would need a `profile_members` join
+  table so more than one login can see and edit the same profile.
 - Auto-generate transactions from active subscriptions/recurring bills on
   their due dates (currently they're tracked but not auto-posted).
 - CSV import/export.
-- Budgets per category with over-budget alerts.
+- Budgets per category with over-budget alerts, including per-profile budgets.
 - Multi-currency support (currently USD-only, cents-based).
 - Automated test suite (Jest/Supertest for the API, Playwright for the UI) —
   this build was verified manually and via `curl` smoke tests, but doesn't

@@ -1,19 +1,18 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useProfiles } from '../context/ProfileContext.jsx';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/transactions', label: 'Transactions' },
-  { to: '/income', label: 'Income' },
-  { to: '/expenses', label: 'Expenses' },
-  { to: '/subscriptions', label: 'Subscriptions' },
-  { to: '/bills', label: 'Bills' },
   { to: '/reports', label: 'Reports' },
+  { to: '/profiles', label: 'Profiles' },
   { to: '/settings', label: 'Settings' },
 ];
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
+  const { profiles, activeProfileId, switchProfile, loading } = useProfiles();
 
   return (
     <div className="app-shell">
@@ -21,6 +20,22 @@ export default function Layout({ children }) {
         <div className="sidebar-brand">
           <span className="brand-mark">Ledger</span>
         </div>
+
+        {!loading && profiles.length > 0 && (
+          <div className="profile-switcher">
+            <label htmlFor="profile-select">Budget</label>
+            <select
+              id="profile-select"
+              value={activeProfileId || ''}
+              onChange={(e) => switchProfile(Number(e.target.value))}
+            >
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <ul className="nav-list">
           {NAV_ITEMS.map((item) => (
             <li key={item.to}>

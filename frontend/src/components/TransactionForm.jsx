@@ -7,8 +7,8 @@ const emptyForm = {
   categoryId: '', isRecurring: false, recurringInterval: 'monthly',
 };
 
-export default function TransactionForm({ categories, initial, onSubmit, onCancel, forcedType }) {
-  const [form, setForm] = useState(initial ? mapFromTransaction(initial) : { ...emptyForm, type: forcedType || 'expense' });
+export default function TransactionForm({ categories, initial, onSubmit, onCancel }) {
+  const [form, setForm] = useState(initial ? mapFromTransaction(initial) : emptyForm);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -64,15 +64,13 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
     <form className="card" onSubmit={handleSubmit} style={{ marginBottom: 20 }}>
       {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
       <div className="form-grid">
-        {!forcedType && (
-          <div className="form-field">
-            <label>Type</label>
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, categoryId: '' })}>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-            </select>
-          </div>
-        )}
+        <div className="form-field">
+          <label>Type</label>
+          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, categoryId: '' })}>
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+          </select>
+        </div>
         <div className="form-field">
           <label>Amount ($)</label>
           <input type="number" min="0.01" step="0.01" value={form.amount}
@@ -89,7 +87,7 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
             {filteredCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div className="form-field" style={{ gridColumn: forcedType ? 'span 2' : 'auto' }}>
+        <div className="form-field">
           <label>Description</label>
           <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
                  placeholder="e.g. Weekly groceries" required />
