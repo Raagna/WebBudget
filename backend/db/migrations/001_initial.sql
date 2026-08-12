@@ -1,10 +1,8 @@
--- Finance App Database Schema
--- SQLite. Every financial table carries a user_id foreign key so records
--- are always scoped to the authenticated owner; transactions are further
--- scoped to a profile (e.g. "Personal" vs "Household") so one account can
--- track multiple separate budgets.
-
-PRAGMA foreign_keys = ON;
+-- Migration 001: initial schema.
+-- This is the full baseline schema (users, profiles, categories,
+-- transactions, subscriptions, bills) plus the 12 default categories.
+-- Every fresh database starts here; every future schema change is a new
+-- numbered migration file in this directory, never an edit to this one.
 
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,10 +38,9 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 -- IMPORTANT: SQLite treats NULL as distinct from every other NULL, so the
 -- UNIQUE(user_id, name) constraint above does NOT stop duplicate rows for
--- the global default categories (user_id IS NULL) - every insert looked
--- "unique" to SQLite even when the name already existed. This partial
--- index closes that gap by enforcing uniqueness specifically within the
--- global (user_id IS NULL) rows.
+-- the global default categories (user_id IS NULL). This partial index
+-- closes that gap by enforcing uniqueness specifically within the global
+-- (user_id IS NULL) rows.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_global_name ON categories(name) WHERE user_id IS NULL;
 
 -- A user can remove a default category from their own view without
@@ -63,7 +60,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount_cents        INTEGER NOT NULL CHECK (amount_cents > 0),
   type                TEXT NOT NULL CHECK (type IN ('income', 'expense')),
   description          TEXT NOT NULL DEFAULT '',
-  occurred_on         TEXT NOT NULL,               -- ISO date YYYY-MM-DD
+  occurred_on         TEXT NOT NULL,
   is_recurring        INTEGER NOT NULL DEFAULT 0,
   recurring_interval  TEXT CHECK (recurring_interval IN ('weekly','monthly','yearly') OR recurring_interval IS NULL),
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -74,8 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 
 -- Subscriptions and bills remain available as an API (no longer surfaced
--- in the UI per current design), so they're left user-scoped rather than
--- migrated to profiles. Revisit if they come back into the interface.
+-- in the UI per current design), left user-scoped rather than migrated to
+-- profiles. Revisit if they come back into the interface.
 CREATE TABLE IF NOT EXISTS subscriptions (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -83,7 +80,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   name             TEXT NOT NULL,
   amount_cents     INTEGER NOT NULL CHECK (amount_cents > 0),
   billing_cycle    TEXT NOT NULL CHECK (billing_cycle IN ('weekly','monthly','yearly')),
-  next_billing_on  TEXT NOT NULL,                  -- ISO date
+  next_billing_on  TEXT NOT NULL,
   is_active        INTEGER NOT NULL DEFAULT 1,
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -95,9 +92,25 @@ CREATE TABLE IF NOT EXISTS bills (
   category_id  INTEGER REFERENCES categories(id) ON DELETE SET NULL,
   name         TEXT NOT NULL,
   amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
-  due_on       TEXT NOT NULL,                      -- ISO date
+  due_on       TEXT NOT NULL,
   is_paid      INTEGER NOT NULL DEFAULT 0,
   is_recurring INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_bills_user ON bills(user_id);
+
+-- Default categories every user sees. INSERT OR IGNORE + the partial
+-- unique index above make this safe to re-run.
+INSERT OR IGNORE INTO categories (user_id, name, type, icon, is_default) VALUES
+  (NULL, 'Subscription',   'expense', 'repeat',        1),
+  (NULL, 'Bill',           'expense', 'file-text',     1),
+  (NULL, 'Food',           'expense', 'utensils',      1),
+  (NULL, 'Groceries',      'expense', 'shopping-cart', 1),
+  (NULL, 'Transportation', 'expense', 'car',           1),
+  (NULL, 'Entertainment',  'expense', 'film',          1),
+  (NULL, 'Rent/Mortgage',  'expense', 'home',          1),
+  (NULL, 'Utilities',      'expense', 'zap',           1),
+  (NULL, 'Shopping',       'expense', 'bag',           1),
+  (NULL, 'Healthcare',     'expense', 'heart',         1),
+  (NULL, 'Salary/Income',  'income',  'briefcase',     1),
+  (NULL, 'Other',          'both',    'circle',        1);

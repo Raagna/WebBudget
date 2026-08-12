@@ -7,35 +7,44 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-db.exec(schema);
+// ---------- Migrations ----------
+// Every schema change - new tables, new columns, new default data - lives
+// as its own numbered .sql file in db/migrations/. This runs once per
+// migration, ever, tracked in schema_migrations, so deploying new code
+// against a database that already has real user data in it upgrades that
+// database in place instead of requiring it to be wiped.
+//
+// To add a change later: create db/migrations/00N_description.sql (N =
+// next number). Never edit an already-shipped migration file - if a
+// database out there already applied it, editing it after the fact won't
+// retroactively change what that database has. Write a new migration that
+// makes the further change instead (e.g. ALTER TABLE ... ADD COLUMN, or a
+// new INSERT OR IGNORE for a new default category).
 
-// Predefined categories, seeded once. These are global (user_id NULL) so
-// every user sees the same baseline list alongside any custom categories.
-const DEFAULT_CATEGORIES = [
-  ['Subscription', 'expense', 'repeat'],
-  ['Bill', 'expense', 'file-text'],
-  ['Food', 'expense', 'utensils'],
-  ['Groceries', 'expense', 'shopping-cart'],
-  ['Transportation', 'expense', 'car'],
-  ['Entertainment', 'expense', 'film'],
-  ['Rent/Mortgage', 'expense', 'home'],
-  ['Utilities', 'expense', 'zap'],
-  ['Shopping', 'expense', 'bag'],
-  ['Healthcare', 'expense', 'heart'],
-  ['Salary/Income', 'income', 'briefcase'],
-  ['Other', 'both', 'circle'],
-];
+db.exec(`
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename   TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
 
-const insertCategory = db.prepare(
-  `INSERT OR IGNORE INTO categories (user_id, name, type, icon, is_default)
-   VALUES (NULL, ?, ?, ?, 1)`
-);
-const seedCategories = db.transaction(() => {
-  for (const [name, type, icon] of DEFAULT_CATEGORIES) {
-    insertCategory.run(name, type, icon);
+function runMigrations() {
+  const dir = path.join(__dirname, 'migrations');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  const applied = new Set(db.prepare('SELECT filename FROM schema_migrations').all().map((r) => r.filename));
+
+  for (const file of files) {
+    if (applied.has(file)) continue;
+    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+    const applyMigration = db.transaction(() => {
+      db.exec(sql);
+      db.prepare('INSERT INTO schema_migrations (filename) VALUES (?)').run(file);
+    });
+    applyMigration();
+    console.log(`[db] applied migration ${file}`);
   }
-});
-seedCategories();
+}
+
+runMigrations();
 
 module.exports = db;

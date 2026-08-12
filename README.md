@@ -62,7 +62,9 @@ bills              id, user_id, category_id, name, amount_cents, due_on,
                    is_paid, is_recurring         (API only, not in the UI)
 ```
 
-Full DDL: `backend/db/schema.sql`. Notes:
+Full DDL: `backend/db/migrations/001_initial.sql` (the baseline schema —
+see "Migrations & upgrading" below for how later changes are structured).
+Notes:
 - Amounts are stored as **integer cents**, never floats, to avoid rounding
   errors when summing totals.
 - Every financial table has `user_id NOT NULL REFERENCES users(id)`.
@@ -81,8 +83,8 @@ Full DDL: `backend/db/schema.sql`. Notes:
   caught duplicates among the global (`user_id IS NULL`) rows — each server
   restart silently re-inserted all 12 defaults. Fixed with a **partial
   unique index**: `CREATE UNIQUE INDEX ... ON categories(name) WHERE
-  user_id IS NULL`. If you have an old database file, delete it and re-seed
-  rather than trying to migrate in place (see Setup below).
+  user_id IS NULL`. This fix is baked into `001_initial.sql`, so it applies
+  to every database from the start — no manual cleanup needed.
 - A user can remove a default category from their own view via
   `hidden_categories` without deleting the shared row (which would remove
   it for every other account on the instance) — Settings offers a
@@ -232,8 +234,9 @@ Requires Node.js 18+.
 cd backend
 npm install
 cp .env.example .env   # or use the provided .env — set your own JWT_SECRET for real use
-npm run seed            # creates demo@example.com / DemoPass123! with sample data
-npm start                # http://localhost:4000
+npm run migrate          # creates/upgrades backend/db/finance.db
+npm run seed              # optional: adds demo@example.com / DemoPass123! with sample data
+npm start                  # http://localhost:4000
 
 # 2. Frontend (separate terminal)
 cd frontend
@@ -244,16 +247,38 @@ npm run dev               # http://localhost:5173
 Open `http://localhost:5173` and sign in with the demo account, or register
 a new one.
 
-**Upgrading from an earlier copy of this project?** The schema changed
-(added `profiles` and `hidden_categories`, added `transactions.profile_id`,
-and fixed the category-duplication bug). Rather than migrating an existing
-`backend/db/finance.db` in place, delete it and re-seed:
+(`npm start` also runs pending migrations automatically on boot, since
+`server.js` requires the database module which runs them as a side effect —
+`npm run migrate` is there so you can apply them as a separate step in a
+deploy pipeline, before the new server code starts serving traffic.)
 
-```bash
-cd backend
-rm -f db/finance.db db/finance.db-shm db/finance.db-wal
-npm run seed
-```
+## Migrations & upgrading
+
+Schema changes live as individual, numbered SQL files in
+`backend/db/migrations/`, tracked in a `schema_migrations` table so each
+file only ever runs once against a given database. This means **updating
+to a new version of this app never requires deleting your database** — you
+pull the new code, run `npm run migrate` (or just restart the server), and
+any new migration files apply on top of your existing data.
+
+Rules for adding a future schema change:
+1. Create `backend/db/migrations/00N_short_description.sql` where `N` is
+   the next number.
+2. Never edit an already-shipped migration file. A database that already
+   applied it won't re-run it, so an edit only affects fresh installs and
+   silently diverges from everyone else's database. Write a new migration
+   instead — `ALTER TABLE ... ADD COLUMN`, a new `INSERT OR IGNORE` for a
+   new default category, a data backfill, etc.
+3. Wrap anything destructive with care: migrations run inside a
+   transaction automatically, but SQLite's `ALTER TABLE` support is
+   limited (no `DROP COLUMN` before SQLite 3.35, no changing a column's
+   type in place) — for those cases, the usual pattern is create a new
+   table, copy the data across, drop the old one, rename.
+
+This was tested by seeding real data, adding a new migration file that
+inserts an additional default category, and confirming the upgrade applies
+the new category while leaving every existing transaction and login
+untouched.
 
 ## Testing instructions
 
@@ -291,6 +316,87 @@ For automated backend testing, `curl` or a tool like Postman can exercise
 the endpoints in the API table above — every route returns JSON and
 standard HTTP status codes (`400` invalid input, `401` unauthenticated,
 `404` not found/not owned, `409` conflict).
+
+## Deployment (free tier)
+
+The pieces you need: somewhere to run the Node backend continuously (so
+SQLite has a stable file to write to), somewhere to serve the static
+frontend build, and — because SQLite writes to a file — a host whose free
+tier includes persistent disk, not just an ephemeral container filesystem.
+
+**Recommended free combination: Render (backend) + Vercel (frontend).**
+
+1. **Push this repo to GitHub.** Both Render and Vercel deploy by
+   connecting to a GitHub repo and redeploying on every push, so this
+   comes first. (`git init`, commit, create a repo on github.com, `git
+   remote add origin ...`, `git push -u origin main`.)
+
+2. **Generate a real JWT secret** — don't reuse the placeholder in
+   `.env.example`:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
+   Keep the output somewhere safe; it goes into Render's environment
+   variables in the next step, never into the repo.
+
+3. **Deploy the backend on Render** (free web service):
+   - New Web Service → connect your GitHub repo → root directory `backend`
+   - Build command: `npm install`
+   - **Start command: `npm run migrate && npm start`** — this is the part
+     that matters for upgrade compatibility. Every deploy runs pending
+     migrations before the server starts accepting traffic, so pushing a
+     future update never requires manually touching the database.
+   - Environment variables: `JWT_SECRET` (from step 2), `CORS_ORIGIN`
+     (your Vercel URL — you'll get this in step 4, add it after), and
+     `DB_PATH` pointing at your persistent disk, e.g.
+     `/var/data/finance.db`.
+   - Add a **free persistent disk** (Render's free tier includes a small
+     one) mounted at `/var/data`. Without this, every redeploy wipes the
+     SQLite file — migrations protect your *schema*, but the disk is what
+     protects the *data* the schema holds.
+   - Optional one-time step: open Render's shell for the service and run
+     `npm run seed` if you want the demo account and sample data live.
+     Skip this for a real deployment with only real user accounts.
+
+4. **Deploy the frontend on Vercel** (or Netlify — same idea):
+   - Import the same GitHub repo → root directory `frontend`
+   - Build command: `npm run build`, output directory: `dist`
+   - Environment variable: `VITE_API_URL` set to your Render backend URL
+     plus `/api`, e.g. `https://your-backend.onrender.com/api`
+
+5. **Close the loop on CORS**: go back to Render's environment variables
+   and set `CORS_ORIGIN` to your Vercel URL (e.g.
+   `https://your-app.vercel.app`), then redeploy the backend so it accepts
+   requests from the deployed frontend instead of just `localhost`.
+
+6. **Verify**: open the Vercel URL, register an account (or sign in with
+   the demo account if you seeded it), add a transaction, confirm it
+   appears on the dashboard.
+
+**What "upgrade compatibility" gets you going forward:** when you make a
+future change locally — add a table, add a column, add a new migration
+file — you just `git push`. Render rebuilds, runs `npm run migrate` as
+part of the start command, and your existing users' data carries forward
+untouched. No manual database surgery, no coordinating a maintenance
+window, no risk of the "delete and reseed" step wiping real data because
+someone forgot it was for local dev only.
+
+**Trade-offs of the free tier, worth knowing going in:**
+- Render's free web services **spin down after ~15 minutes of
+  inactivity** and take a few seconds to wake back up on the next request
+  — fine for a personal project, noticeable if you show it to someone cold.
+- Render's free persistent disk is small (typically 1GB) — plenty for a
+  personal finance tracker's SQLite file, but worth knowing if you plan to
+  import years of bulk transaction history.
+- If you outgrow SQLite's single-writer model (multiple people actively
+  using the app at once, higher write volume), the migration-based
+  approach here ports directly to Postgres — swap `better-sqlite3` for a
+  Postgres client, and the parameterized-query style in the route files
+  doesn't need to change, just the driver.
+- Alternatives if Render doesn't fit: Fly.io's free allowance also
+  supports persistent volumes; Railway no longer has an indefinite free
+  tier (trial credit only); a $5-6/mo VPS (DigitalOcean, Hetzner) avoids
+  cold starts entirely if the spin-down behavior is a dealbreaker.
 
 ## Future improvements
 
