@@ -1,5 +1,6 @@
 const express = require('express');
-const db = require('../db');
+const { query, queryOne, run } = require('../db');
+const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const {
   isNonEmptyString,
@@ -22,7 +23,7 @@ function serialize(row) {
     amount: fromCents(row.amount_cents),
     type: row.type,
     description: row.description,
-    date: row.occurred_on,
+    date: row.occurred_on instanceof Date ? row.occurred_on.toISOString().slice(0, 10) : row.occurred_on,
     isRecurring: !!row.is_recurring,
     recurringInterval: row.recurring_interval,
     categoryId: row.category_id,
@@ -35,14 +36,15 @@ function serialize(row) {
 // Every route below operates within a single profile. This helper confirms
 // the requested profile actually belongs to the authenticated user before
 // any query touches it, so a user can never read or write another
-// account's profile by guessing an id.
-function requireOwnedProfile(req, res, profileIdRaw) {
+// account's profile by guessing an id. Returns null (and has already sent
+// a response) if the check fails.
+async function requireOwnedProfile(req, res, profileIdRaw) {
   const profileId = Number(profileIdRaw);
   if (!Number.isInteger(profileId) || profileId <= 0) {
     res.status(400).json({ error: 'A valid profileId is required' });
     return null;
   }
-  const owned = db.prepare('SELECT id FROM profiles WHERE id = ? AND user_id = ?').get(profileId, req.userId);
+  const owned = await queryOne('SELECT id FROM profiles WHERE id = ? AND user_id = ?', [profileId, req.userId]);
   if (!owned) {
     res.status(404).json({ error: 'Profile not found' });
     return null;
@@ -51,8 +53,8 @@ function requireOwnedProfile(req, res, profileIdRaw) {
 }
 
 // GET /api/transactions?profileId=&type=&categoryId=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
-router.get('/', (req, res) => {
-  const profileId = requireOwnedProfile(req, res, req.query.profileId);
+router.get('/', asyncHandler(async (req, res) => {
+  const profileId = await requireOwnedProfile(req, res, req.query.profileId);
   if (profileId === null) return;
 
   const { type, categoryId, from, to, minAmount, maxAmount } = req.query;
@@ -100,13 +102,14 @@ router.get('/', (req, res) => {
     ORDER BY t.${sort} ${dir}
     LIMIT ? OFFSET ?
   `;
-  const rows = db.prepare(sql).all(...params, limit, offset);
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM transactions t WHERE ${clauses.join(' AND ')}`)
-    .get(...params).n;
+  const rows = await query(sql, [...params, limit, offset]);
+  const totalRow = await queryOne(
+    `SELECT COUNT(*)::int AS n FROM transactions t WHERE ${clauses.join(' AND ')}`,
+    params
+  );
 
-  res.json({ transactions: rows.map(serialize), total, limit, offset });
-});
+  res.json({ transactions: rows.map(serialize), total: totalRow.n, limit, offset });
+}));
 
 router.post(
   '/',
@@ -116,16 +119,17 @@ router.post(
     description: (v) => v === undefined || isNonEmptyString(v, 255),
     date: isValidDate,
   }),
-  (req, res) => {
-    const profileId = requireOwnedProfile(req, res, req.body.profileId);
+  asyncHandler(async (req, res) => {
+    const profileId = await requireOwnedProfile(req, res, req.body.profileId);
     if (profileId === null) return;
 
     const { amount, type, description = '', date, categoryId, isRecurring, recurringInterval } = req.body;
 
     if (categoryId !== undefined && categoryId !== null) {
-      const cat = db
-        .prepare('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)')
-        .get(categoryId, req.userId);
+      const cat = await queryOne(
+        'SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
+        [categoryId, req.userId]
+      );
       if (!cat) return res.status(400).json({ error: 'Invalid category' });
     }
 
@@ -134,23 +138,22 @@ router.post(
       ? recurringInterval
       : null;
 
-    const info = db
-      .prepare(
-        `INSERT INTO transactions
-           (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(req.userId, profileId, categoryId || null, toCents(amount), type, description.trim(), date, recurring ? 1 : 0, interval);
+    const inserted = await queryOne(
+      `INSERT INTO transactions
+         (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
+      [req.userId, profileId, categoryId || null, toCents(amount), type, description.trim(), date, recurring, interval]
+    );
 
-    const row = db
-      .prepare(
-        `SELECT t.*, c.name AS category_name, c.icon AS category_icon
-         FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-         WHERE t.id = ?`
-      )
-      .get(info.lastInsertRowid);
+    const row = await queryOne(
+      `SELECT t.*, c.name AS category_name, c.icon AS category_icon
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.id = ?`,
+      [inserted.id]
+    );
     res.status(201).json(serialize(row));
-  }
+  })
 );
 
 router.put(
@@ -161,20 +164,19 @@ router.put(
     description: (v) => v === undefined || isNonEmptyString(v, 255),
     date: isValidDate,
   }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const { amount, type, description = '', date, categoryId, isRecurring, recurringInterval } = req.body;
 
     // Ownership check happens in the WHERE clause of the UPDATE itself, so
     // a user can never modify another user's transaction by guessing an id.
-    const existing = db
-      .prepare('SELECT id FROM transactions WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.userId);
+    const existing = await queryOne('SELECT id FROM transactions WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
     if (!existing) return res.status(404).json({ error: 'Transaction not found' });
 
     if (categoryId !== undefined && categoryId !== null) {
-      const cat = db
-        .prepare('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)')
-        .get(categoryId, req.userId);
+      const cat = await queryOne(
+        'SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
+        [categoryId, req.userId]
+      );
       if (!cat) return res.status(400).json({ error: 'Invalid category' });
     }
 
@@ -183,31 +185,29 @@ router.put(
       ? recurringInterval
       : null;
 
-    db.prepare(
+    await run(
       `UPDATE transactions
        SET amount_cents = ?, type = ?, description = ?, occurred_on = ?,
-           category_id = ?, is_recurring = ?, recurring_interval = ?, updated_at = datetime('now')
-       WHERE id = ? AND user_id = ?`
-    ).run(toCents(amount), type, description.trim(), date, categoryId || null, recurring ? 1 : 0, interval, req.params.id, req.userId);
+           category_id = ?, is_recurring = ?, recurring_interval = ?, updated_at = NOW()
+       WHERE id = ? AND user_id = ?`,
+      [toCents(amount), type, description.trim(), date, categoryId || null, recurring, interval, req.params.id, req.userId]
+    );
 
-    const row = db
-      .prepare(
-        `SELECT t.*, c.name AS category_name, c.icon AS category_icon
-         FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-         WHERE t.id = ?`
-      )
-      .get(req.params.id);
+    const row = await queryOne(
+      `SELECT t.*, c.name AS category_name, c.icon AS category_icon
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.id = ?`,
+      [req.params.id]
+    );
     res.json(serialize(row));
-  }
+  })
 );
 
-router.delete('/:id', (req, res) => {
-  const result = db
-    .prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?')
-    .run(req.params.id, req.userId);
-  if (result.changes === 0) return res.status(404).json({ error: 'Transaction not found' });
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const result = await run('DELETE FROM transactions WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+  if (result.rowCount === 0) return res.status(404).json({ error: 'Transaction not found' });
   res.status(204).end();
-});
+}));
 
 // ---------- Bulk operations (multi-select in the UI) ----------
 // Both endpoints scope by user_id in addition to the id list, so a
@@ -218,29 +218,31 @@ router.delete('/:id', (req, res) => {
 router.post(
   '/bulk-delete',
   validateBody({ ids: isIdArray }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const { ids } = req.body;
     const placeholders = ids.map(() => '?').join(',');
-    const result = db
-      .prepare(`DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`)
-      .run(req.userId, ...ids);
-    res.json({ deleted: result.changes });
-  }
+    const result = await run(
+      `DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`,
+      [req.userId, ...ids]
+    );
+    res.json({ deleted: result.rowCount });
+  })
 );
 
 router.patch(
   '/bulk-update',
   validateBody({ ids: isIdArray }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const { ids, categoryId, isRecurring } = req.body;
 
     if (categoryId === undefined && isRecurring === undefined) {
       return res.status(400).json({ error: 'Provide categoryId and/or isRecurring to update' });
     }
     if (categoryId !== undefined && categoryId !== null) {
-      const cat = db
-        .prepare('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)')
-        .get(categoryId, req.userId);
+      const cat = await queryOne(
+        'SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
+        [categoryId, req.userId]
+      );
       if (!cat) return res.status(400).json({ error: 'Invalid category' });
     }
 
@@ -249,17 +251,18 @@ router.patch(
     if (categoryId !== undefined) { fields.push('category_id = ?'); params.push(categoryId || null); }
     if (isRecurring !== undefined) {
       fields.push('is_recurring = ?');
-      params.push(isRecurring ? 1 : 0);
+      params.push(!!isRecurring);
       if (!isRecurring) { fields.push('recurring_interval = NULL'); }
     }
-    fields.push("updated_at = datetime('now')");
+    fields.push('updated_at = NOW()');
 
     const placeholders = ids.map(() => '?').join(',');
-    const result = db
-      .prepare(`UPDATE transactions SET ${fields.join(', ')} WHERE user_id = ? AND id IN (${placeholders})`)
-      .run(...params, req.userId, ...ids);
-    res.json({ updated: result.changes });
-  }
+    const result = await run(
+      `UPDATE transactions SET ${fields.join(', ')} WHERE user_id = ? AND id IN (${placeholders})`,
+      [...params, req.userId, ...ids]
+    );
+    res.json({ updated: result.rowCount });
+  })
 );
 
 module.exports = router;

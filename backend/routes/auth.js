@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const db = require('../db');
+const { queryOne, run, withTransaction } = require('../db');
+const { asyncHandler } = require('../middleware/asyncHandler');
 const { signToken } = require('../middleware/auth');
 const { isNonEmptyString, isValidEmail, validateBody } = require('../middleware/validate');
 
@@ -14,11 +15,11 @@ router.post(
     email: isValidEmail,
     password: (v) => typeof v === 'string' && v.length >= 8 && v.length <= 128,
   }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const { name, email, password } = req.body;
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    const existing = await queryOne('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
     if (existing) {
       // Same generic message as login failures - do not reveal whether an
       // account exists.
@@ -30,21 +31,21 @@ router.post(
     // Create the user and their first profile together so they always
     // land on a working "Personal" budget with nowhere-to-put-a-transaction
     // gaps in the UI.
-    const createUserWithProfile = db.transaction(() => {
-      const userInfo = db
-        .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
-        .run(name.trim(), normalizedEmail, passwordHash);
-      db.prepare('INSERT INTO profiles (user_id, name) VALUES (?, ?)').run(userInfo.lastInsertRowid, 'Personal');
-      return userInfo;
+    const user = await withTransaction(async (tx) => {
+      const inserted = await tx.queryOne(
+        'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id',
+        [name.trim(), normalizedEmail, passwordHash]
+      );
+      await tx.run('INSERT INTO profiles (user_id, name) VALUES (?, ?)', [inserted.id, 'Personal']);
+      return inserted;
     });
-    const info = createUserWithProfile();
 
-    const token = signToken(info.lastInsertRowid);
+    const token = signToken(user.id);
     res.status(201).json({
       token,
-      user: { id: info.lastInsertRowid, name: name.trim(), email: normalizedEmail },
+      user: { id: user.id, name: name.trim(), email: normalizedEmail },
     });
-  }
+  })
 );
 
 router.post(
@@ -53,11 +54,11 @@ router.post(
     email: isValidEmail,
     password: (v) => typeof v === 'string' && v.length > 0 && v.length <= 128,
   }),
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const normalizedEmail = email.trim().toLowerCase();
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+    const user = await queryOne('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
     // Always run bcrypt.compare, even on a missing user, against a dummy
     // hash so response timing doesn't leak whether the email is registered.
     const hashToCheck = user ? user.password_hash : '$2a$12$invalidsaltinvalidsaltinvalidsalu';
@@ -70,14 +71,14 @@ router.post(
     // Defensive backfill: an account created before profiles existed
     // (or restored from an old backup) might have none. Give it one
     // rather than leaving the user stuck with nowhere to log a transaction.
-    const profileCount = db.prepare('SELECT COUNT(*) AS n FROM profiles WHERE user_id = ?').get(user.id).n;
-    if (profileCount === 0) {
-      db.prepare('INSERT INTO profiles (user_id, name) VALUES (?, ?)').run(user.id, 'Personal');
+    const profileCount = await queryOne('SELECT COUNT(*)::int AS n FROM profiles WHERE user_id = ?', [user.id]);
+    if (profileCount.n === 0) {
+      await run('INSERT INTO profiles (user_id, name) VALUES (?, ?)', [user.id, 'Personal']);
     }
 
     const token = signToken(user.id);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
-  }
+  })
 );
 
 module.exports = router;

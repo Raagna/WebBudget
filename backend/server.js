@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
+const { runMigrations } = require('./db');
 const authRoutes = require('./routes/auth');
 const categoryRoutes = require('./routes/categories');
 const profileRoutes = require('./routes/profiles');
@@ -43,4 +44,15 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Finance API listening on http://localhost:${PORT}`));
+
+// Run pending migrations before accepting any traffic, so `npm start`
+// alone is always safe to run against a database that's behind - matches
+// what `npm run migrate` does standalone, just inline on boot.
+runMigrations()
+  .then(() => {
+    app.listen(PORT, () => console.log(`Finance API listening on http://localhost:${PORT}`));
+  })
+  .catch((err) => {
+    console.error('[db] failed to run migrations, refusing to start:', err);
+    process.exit(1);
+  });

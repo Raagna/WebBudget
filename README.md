@@ -14,24 +14,32 @@ entered, and the seeded sample data is clearly fictional.
 |---|---|---|
 | Frontend | React 18 + Vite | Fast dev loop, small footprint, no framework lock-in |
 | Charts | Recharts | Declarative, composable, good defaults for line/bar/pie |
-| Routing | React Router v6 | Standard client-side routing + protected routes |
+| Routing | React Router v6 (`HashRouter`) | Hash-based routing works on static hosts like GitHub Pages with no server-side rewrite rules needed |
 | Backend | Node.js + Express | Simple, well-understood, easy to extend |
-| Database | SQLite via `better-sqlite3` | Zero-config persistent DB, synchronous API keeps route handlers simple, trivially swappable for Postgres later (see Future Improvements) |
+| Database | Postgres via `pg` (node-postgres) | Real concurrent-write support, works with free managed hosts (Neon, Supabase, Render), no persistent-disk juggling on the API host since data lives in the managed database |
 | Auth | JWT + bcrypt | Stateless auth, industry-standard password hashing (12 salt rounds) |
 | Validation | Hand-written allow-list validators | No hidden magic — every field is explicitly checked before touching SQL |
 
-**Assumption made:** SQLite was chosen over Postgres/MySQL to keep the
-project runnable with zero external services. The schema and query patterns
-(parameterized queries, explicit foreign keys) translate directly to
-Postgres if you outgrow a single-file database — see Future Improvements.
+**This project previously used SQLite** (`better-sqlite3`) and has since
+been converted to Postgres so the frontend can be hosted separately on
+GitHub Pages while the backend talks to a managed database. The
+conversion touched every route file: SQLite's synchronous
+`db.prepare(sql).get/all/run()` API became async `query`/`queryOne`/`run`
+helpers over a connection pool, `?` placeholders are auto-converted to
+Postgres's `$1, $2, ...` by a small helper in `db/index.js` (so the SQL in
+route files barely changed), and a few SQLite-specific SQL functions
+(`strftime`, `date('now', ...)`) became their Postgres equivalents
+(`TO_CHAR`, `CURRENT_DATE - INTERVAL`). See `db/index.js` for the
+compatibility layer.
 
 ## Architecture
 
 ```
-┌─────────────┐      HTTPS/JSON       ┌──────────────┐      SQL       ┌──────────┐
-│   Frontend   │ ───────────────────▶ │   Backend    │ ─────────────▶ │  SQLite  │
-│  React/Vite  │ ◀─────────────────── │ Express API  │ ◀───────────── │   file   │
-└─────────────┘   Bearer JWT token    └──────────────┘                └──────────┘
+┌─────────────┐      HTTPS/JSON       ┌──────────────┐      SQL       ┌──────────────┐
+│   Frontend   │ ───────────────────▶ │   Backend    │ ─────────────▶ │   Postgres   │
+│ React/Vite   │ ◀─────────────────── │ Express API  │ ◀───────────── │ (managed DB) │
+│ GitHub Pages │   Bearer JWT token   │  e.g. Render │                │ e.g. Neon    │
+└─────────────┘                       └──────────────┘                └──────────────┘
                                               │
                                        middleware/auth.js
                                        (verifies JWT, sets
@@ -39,13 +47,17 @@ Postgres if you outgrow a single-file database — see Future Improvements.
                                         protected request)
 ```
 
+The frontend and backend are deployed to **separate hosts** — GitHub Pages
+only serves static files, it has no server runtime, so it cannot run the
+Express API or talk to Postgres directly. See Deployment below.
+
 Layers are kept separate on purpose:
 - **`middleware/auth.js`** only knows how to verify identity — it has no idea
   what a transaction or bill is.
 - **`routes/*.js`** each own one resource and never trust a `user_id` from
   the client — they always use `req.userId` from the verified token.
-- **`db/`** owns schema + connection setup; route files never open their own
-  connections or run raw migrations inline.
+- **`db/index.js`** owns the connection pool, the SQLite-placeholder-style-to-Postgres
+  translation, and migrations; route files never open their own connections.
 
 ## Database schema
 
@@ -78,17 +90,27 @@ Notes:
   scoped to a user for custom ones — queried as a `UNION`-style `WHERE
   user_id IS NULL OR user_id = ?`.
 - **Known bug, fixed:** the original schema relied on `UNIQUE(user_id, name)`
-  to stop duplicate default categories. SQLite treats every `NULL` as
-  distinct from every other `NULL`, so that constraint never actually
-  caught duplicates among the global (`user_id IS NULL`) rows — each server
-  restart silently re-inserted all 12 defaults. Fixed with a **partial
-  unique index**: `CREATE UNIQUE INDEX ... ON categories(name) WHERE
-  user_id IS NULL`. This fix is baked into `001_initial.sql`, so it applies
-  to every database from the start — no manual cleanup needed.
+  to stop duplicate default categories. SQL (both SQLite and Postgres) treats
+  every `NULL` as distinct from every other `NULL`, so that constraint never
+  actually caught duplicates among the global (`user_id IS NULL`) rows —
+  each server restart silently re-inserted all 12 defaults. Fixed with a
+  **partial unique index**: `CREATE UNIQUE INDEX ... ON categories(name)
+  WHERE user_id IS NULL`. This fix is baked into `001_initial.sql`, so it
+  applies to every database from the start — no manual cleanup needed. It
+  was re-verified against Postgres specifically (restarted the server
+  multiple times, category count stayed at exactly 12).
 - A user can remove a default category from their own view via
   `hidden_categories` without deleting the shared row (which would remove
   it for every other account on the instance) — Settings offers a
   "Restore" action for anything hidden this way.
+- Money amounts (`amount_cents`) are `INTEGER`; date columns
+  (`occurred_on`, `due_on`, `next_billing_on`) are `DATE`; boolean flags
+  are real `BOOLEAN` (Postgres, unlike SQLite, has a native boolean type —
+  the app no longer stores them as 0/1 integers). `db/index.js` overrides
+  node-postgres's default `DATE` parser to return plain `'YYYY-MM-DD'`
+  strings instead of JS `Date` objects, avoiding a class of timezone-shift
+  bugs where a date silently becomes the previous/next day depending on
+  server timezone.
 
 ## API endpoints
 
@@ -131,9 +153,11 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 - **Input validation**: hand-written allow-list validators
   (`middleware/validate.js`) reject malformed amounts, dates, emails, and
   strings before they reach SQL.
-- **Parameterized queries** throughout — `better-sqlite3`'s `?` placeholders
-  are used everywhere; the one place a column name is interpolated
-  (`ORDER BY`) is checked against a hardcoded allow-list first.
+- **Parameterized queries** throughout — route files write `?`
+  placeholders for readability, and `db/index.js` converts them to
+  Postgres's `$1, $2, ...` before the query ever reaches `pg`; the one
+  place a column name is interpolated (`ORDER BY`) is checked against a
+  hardcoded allow-list first.
 - **Rate limiting** on `/api/auth/*` (20 requests / 15 min) to slow down
   credential stuffing.
 - **Generic error messages** on login/registration so responses don't reveal
@@ -209,16 +233,18 @@ though those aren't currently linked from the UI.
 
 ```
 finance-app/
+  .github/workflows/
+    deploy-pages.yml  builds frontend/ and publishes it to GitHub Pages on push to main
   backend/
-    db/               schema.sql, index.js (connection + default category seed)
-    middleware/       auth.js, validate.js
-    routes/           auth.js, categories.js, transactions.js, subscriptions.js, bills.js, dashboard.js
+    db/                migrations/001_initial.sql, migrate.js, index.js (pool + migration runner)
+    middleware/        auth.js, validate.js, asyncHandler.js
+    routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
     server.js
     seed.js
     package.json
     .env
   frontend/
-    src/              (see Frontend structure above)
+    src/               (see Frontend structure above)
     index.html
     vite.config.js
     package.json
@@ -227,16 +253,17 @@ finance-app/
 
 ## Setup & installation
 
-Requires Node.js 18+.
+Requires Node.js 18+ and a Postgres database (a local install, or a free
+managed one — see Deployment below for permanent-free options).
 
 ```bash
 # 1. Backend
 cd backend
 npm install
-cp .env.example .env   # or use the provided .env — set your own JWT_SECRET for real use
-npm run migrate          # creates/upgrades backend/db/finance.db
-npm run seed              # optional: adds demo@example.com / DemoPass123! with sample data
-npm start                  # http://localhost:4000
+cp .env.example .env    # set DATABASE_URL to your Postgres connection string, and a real JWT_SECRET
+npm run migrate            # creates/upgrades the schema
+npm run seed                 # optional: adds demo@example.com / DemoPass123! with sample data
+npm start                     # http://localhost:4000
 
 # 2. Frontend (separate terminal)
 cd frontend
@@ -247,10 +274,17 @@ npm run dev               # http://localhost:5173
 Open `http://localhost:5173` and sign in with the demo account, or register
 a new one.
 
-(`npm start` also runs pending migrations automatically on boot, since
-`server.js` requires the database module which runs them as a side effect —
-`npm run migrate` is there so you can apply them as a separate step in a
-deploy pipeline, before the new server code starts serving traffic.)
+(`npm start` also runs pending migrations automatically on boot, before it
+starts accepting requests — `npm run migrate` is there so you can run that
+as a separate step in a deploy pipeline if you'd rather apply migrations
+before a new server version starts serving traffic, rather than relying on
+the inline check.)
+
+**No Postgres installed locally?** `DATABASE_URL` in `.env.example`
+defaults to `postgresql://postgres:postgres@localhost:5432/finance_dev` —
+either install Postgres locally and `createdb finance_dev`, or skip local
+Postgres entirely and point `DATABASE_URL` straight at a free Neon or
+Supabase database (see Deployment) even for local development.
 
 ## Migrations & upgrading
 
@@ -267,18 +301,20 @@ Rules for adding a future schema change:
 2. Never edit an already-shipped migration file. A database that already
    applied it won't re-run it, so an edit only affects fresh installs and
    silently diverges from everyone else's database. Write a new migration
-   instead — `ALTER TABLE ... ADD COLUMN`, a new `INSERT OR IGNORE` for a
-   new default category, a data backfill, etc.
-3. Wrap anything destructive with care: migrations run inside a
-   transaction automatically, but SQLite's `ALTER TABLE` support is
-   limited (no `DROP COLUMN` before SQLite 3.35, no changing a column's
-   type in place) — for those cases, the usual pattern is create a new
-   table, copy the data across, drop the old one, rename.
+   instead — `ALTER TABLE ... ADD COLUMN`, a new `INSERT` for a new default
+   category, a data backfill, etc.
+3. Wrap anything destructive with care: each migration runs inside a
+   transaction automatically. Postgres's `ALTER TABLE` is more capable than
+   SQLite's (it supports `DROP COLUMN`, `ALTER COLUMN ... TYPE`, etc.
+   directly), but changing a column's type on a large table can still lock
+   it for the duration — for anything risky, the safe pattern is still add
+   a new column, backfill it, then drop the old one in a later migration.
 
 This was tested by seeding real data, adding a new migration file that
 inserts an additional default category, and confirming the upgrade applies
 the new category while leaving every existing transaction and login
-untouched.
+untouched — done twice, once against SQLite during the original migration
+system design and again against Postgres after the database conversion.
 
 ## Testing instructions
 
@@ -311,6 +347,10 @@ Manual flows to verify (all confirmed working during development):
 10. **Auth**: log out, confirm protected pages redirect to `/login`; try a
     wrong password, confirm a generic error with no hint about account
     existence.
+11. **If deployed to GitHub Pages**: navigate to a page like Transactions,
+    then hard-refresh the browser — should reload the same page correctly
+    (confirms hash-based routing is working) rather than showing a GitHub
+    Pages 404.
 
 For automated backend testing, `curl` or a tool like Postman can exercise
 the endpoints in the API table above — every route returns JSON and
@@ -319,90 +359,117 @@ standard HTTP status codes (`400` invalid input, `401` unauthenticated,
 
 ## Deployment (free tier)
 
-The pieces you need: somewhere to run the Node backend continuously (so
-SQLite has a stable file to write to), somewhere to serve the static
-frontend build, and — because SQLite writes to a file — a host whose free
-tier includes persistent disk, not just an ephemeral container filesystem.
+Three pieces now, deployed independently: **GitHub Pages** serves the
+static frontend, a **Postgres provider** hosts the database, and a
+**Node host** runs the Express API in between. Because the database is
+external, the API host doesn't need persistent disk the way the SQLite
+version did — the container can be fully ephemeral and the data survives
+regardless.
 
-**Recommended free combination: Render (backend) + Vercel (frontend).**
+**Recommended free combination: Neon (Postgres) + Render (backend) +
+GitHub Pages (frontend).**
 
-1. **Push this repo to GitHub.** Both Render and Vercel deploy by
-   connecting to a GitHub repo and redeploying on every push, so this
-   comes first. (`git init`, commit, create a repo on github.com, `git
-   remote add origin ...`, `git push -u origin main`.)
+1. **Push this repo to GitHub** if you haven't already (`git init`,
+   commit, create a repo on github.com, `git remote add origin ...`,
+   `git push -u origin main`).
 
-2. **Generate a real JWT secret** — don't reuse the placeholder in
+2. **Create a free Postgres database.** [Neon](https://neon.tech) and
+   [Supabase](https://supabase.com) both have permanent free tiers (unlike
+   Render's Postgres, which is free for 90 days and then deleted). Either
+   one works the same way here — create a project, and copy the connection
+   string it gives you. It'll look like:
+   ```
+   postgresql://user:password@ep-something.region.aws.neon.tech/dbname?sslmode=require
+   ```
+   That `sslmode=require` matters — `db/index.js` detects it automatically
+   and enables SSL, which these providers require.
+
+3. **Generate a real JWT secret** — don't reuse the placeholder in
    `.env.example`:
    ```bash
    node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
    ```
-   Keep the output somewhere safe; it goes into Render's environment
-   variables in the next step, never into the repo.
+   Keep it somewhere safe; it goes into Render's environment variables
+   next, never into the repo.
 
-3. **Deploy the backend on Render** (free web service):
+4. **Deploy the backend on Render** (free web service):
    - New Web Service → connect your GitHub repo → root directory `backend`
    - Build command: `npm install`
    - **Start command: `npm run migrate && npm start`** — this is the part
      that matters for upgrade compatibility. Every deploy runs pending
-     migrations before the server starts accepting traffic, so pushing a
-     future update never requires manually touching the database.
-   - Environment variables: `JWT_SECRET` (from step 2), `CORS_ORIGIN`
-     (your Vercel URL — you'll get this in step 4, add it after), and
-     `DB_PATH` pointing at your persistent disk, e.g.
-     `/var/data/finance.db`.
-   - Add a **free persistent disk** (Render's free tier includes a small
-     one) mounted at `/var/data`. Without this, every redeploy wipes the
-     SQLite file — migrations protect your *schema*, but the disk is what
-     protects the *data* the schema holds.
+     migrations against your Neon/Supabase database before the server
+     starts accepting traffic, so pushing a future update never requires
+     manually touching the database.
+   - Environment variables: `DATABASE_URL` (from step 2), `JWT_SECRET`
+     (from step 3), `CORS_ORIGIN` (your GitHub Pages URL — add this after
+     step 6, once you know it).
+   - No persistent disk needed this time — the database lives in Neon/Supabase,
+     not on this container.
    - Optional one-time step: open Render's shell for the service and run
      `npm run seed` if you want the demo account and sample data live.
      Skip this for a real deployment with only real user accounts.
 
-4. **Deploy the frontend on Vercel** (or Netlify — same idea):
-   - Import the same GitHub repo → root directory `frontend`
-   - Build command: `npm run build`, output directory: `dist`
-   - Environment variable: `VITE_API_URL` set to your Render backend URL
-     plus `/api`, e.g. `https://your-backend.onrender.com/api`
+5. **Set up GitHub Pages**: repo Settings → Pages → Source: "GitHub
+   Actions" (not "Deploy from a branch" — the included workflow handles
+   the build itself). Then repo Settings → Secrets and variables → Actions
+   → Variables → New repository variable: `VITE_API_URL` set to your
+   Render backend URL plus `/api`, e.g.
+   `https://your-backend.onrender.com/api`.
 
-5. **Close the loop on CORS**: go back to Render's environment variables
-   and set `CORS_ORIGIN` to your Vercel URL (e.g.
-   `https://your-app.vercel.app`), then redeploy the backend so it accepts
-   requests from the deployed frontend instead of just `localhost`.
+6. **Deploy the frontend**: the included `.github/workflows/deploy-pages.yml`
+   runs automatically on every push to `main` — build it, upload it,
+   publish it. Push a commit (or trigger it manually from the Actions tab)
+   and watch it run. Your site ends up at
+   `https://<your-username>.github.io/<repo-name>/`.
 
-6. **Verify**: open the Vercel URL, register an account (or sign in with
+7. **Close the loop on CORS**: go back to Render's environment variables
+   and set `CORS_ORIGIN` to your GitHub Pages URL from step 6, then
+   redeploy the backend so it accepts requests from the deployed frontend
+   instead of just `localhost`.
+
+8. **Verify**: open the Pages URL, register an account (or sign in with
    the demo account if you seeded it), add a transaction, confirm it
    appears on the dashboard.
 
 **What "upgrade compatibility" gets you going forward:** when you make a
 future change locally — add a table, add a column, add a new migration
-file — you just `git push`. Render rebuilds, runs `npm run migrate` as
-part of the start command, and your existing users' data carries forward
-untouched. No manual database surgery, no coordinating a maintenance
-window, no risk of the "delete and reseed" step wiping real data because
-someone forgot it was for local dev only.
+file — you just `git push`. Render rebuilds and runs `npm run migrate` as
+part of the start command, GitHub Actions rebuilds the frontend, and your
+existing users' data in Neon/Supabase carries forward untouched. No manual
+database surgery, no coordinating a maintenance window.
 
 **Trade-offs of the free tier, worth knowing going in:**
 - Render's free web services **spin down after ~15 minutes of
   inactivity** and take a few seconds to wake back up on the next request
   — fine for a personal project, noticeable if you show it to someone cold.
-- Render's free persistent disk is small (typically 1GB) — plenty for a
-  personal finance tracker's SQLite file, but worth knowing if you plan to
-  import years of bulk transaction history.
-- If you outgrow SQLite's single-writer model (multiple people actively
-  using the app at once, higher write volume), the migration-based
-  approach here ports directly to Postgres — swap `better-sqlite3` for a
-  Postgres client, and the parameterized-query style in the route files
-  doesn't need to change, just the driver.
-- Alternatives if Render doesn't fit: Fly.io's free allowance also
-  supports persistent volumes; Railway no longer has an indefinite free
-  tier (trial credit only); a $5-6/mo VPS (DigitalOcean, Hetzner) avoids
-  cold starts entirely if the spin-down behavior is a dealbreaker.
+- Neon's free tier also has its own auto-suspend behavior (a few seconds
+  of "cold" latency on the first query after idle) and a storage cap that's
+  generous for personal use but worth checking against your plans.
+- GitHub Pages is a **public** URL by default on a public repo — anyone
+  with the link can reach the login page (they still need real
+  credentials to see any data, but if that visibility bothers you, GitHub
+  Pages on a private repo requires GitHub Enterprise; a plain custom
+  domain behind Vercel/Netlify with access controls is the alternative).
+- `HashRouter` means URLs look like
+  `your-site.github.io/repo/#/transactions` instead of a clean path — a
+  reasonable trade for not needing server-side rewrite rules, but worth
+  knowing if clean URLs matter to you (achievable with a `404.html`
+  redirect trick instead, at the cost of more moving parts).
+- Alternatives: Fly.io's free allowance also works for the backend;
+  Supabase can replace Neon for Postgres and additionally offers its own
+  auth/storage if you ever want to lean on it instead of this app's own
+  JWT auth; Vercel/Netlify remain fine alternatives to GitHub Pages for
+  the frontend if you'd rather avoid the hash-routing trade-off (just
+  swap `HashRouter` back to `BrowserRouter` in `App.jsx` — those hosts
+  support the server-side rewrites that need).
 
 ## Future improvements
 
-- Swap SQLite for Postgres for concurrent multi-instance deployments (the
-  parameterized-query style ports directly).
 - Add refresh tokens / shorter-lived access tokens instead of a single 7-day JWT.
+- **Connection pooling at scale**: the `pg.Pool` default settings are fine
+  for a personal project; a busier deployment would want to tune pool size
+  against whatever connection limit your Postgres provider's free tier
+  imposes (Neon and Supabase both cap free-tier connection counts).
 - **Shared household profiles**: profiles currently belong to a single
   user. A real multi-person household would need a `profile_members` join
   table so more than one login can see and edit the same profile.
