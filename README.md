@@ -226,8 +226,8 @@ and "Household" — and ~9 months of clearly fictional transaction history
 split realistically between them (rent, shared utilities, and groceries in
 Household; subscriptions, entertainment, and the user's own salary in
 Personal, with random variance so months aren't identical). It also seeds a
-few sample subscriptions and bills through the API for completeness, even
-though those aren't currently linked from the UI.
+few sample subscriptions and bills directly in the database for
+completeness, even though those aren't currently linked from the UI.
 
 ## Project file structure
 
