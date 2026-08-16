@@ -18,8 +18,8 @@ client.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('finance_token');
       localStorage.removeItem('finance_user');
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+      if (!window.location.hash.startsWith('#/login')) {
+        window.location.hash = '#/login';
       }
     }
     return Promise.reject(err);
