@@ -64,6 +64,7 @@ Layers are kept separate on purpose:
 ```
 users              id, name, email (unique), password_hash, created_at
 profiles           id, user_id, name, created_at
+profile_members    profile_id, user_id, role (owner/member), status (active/pending), invited_by
 categories         id, user_id (NULL = global default), name, type, icon, is_default
 hidden_categories  user_id, category_id  (per-user hide of a default category)
 transactions       id, user_id, profile_id, category_id, amount_cents, type,
@@ -74,18 +75,29 @@ bills              id, user_id, category_id, name, amount_cents, due_on,
                    is_paid, is_recurring         (API only, not in the UI)
 ```
 
-Full DDL: `backend/db/migrations/001_initial.sql` (the baseline schema —
-see "Migrations & upgrading" below for how later changes are structured).
+Full DDL: `backend/db/migrations/001_initial.sql` plus `002_household_members.sql`
+(see "Migrations & upgrading" below for how later changes are structured).
 Notes:
 - Amounts are stored as **integer cents**, never floats, to avoid rounding
   errors when summing totals.
 - Every financial table has `user_id NOT NULL REFERENCES users(id)`.
 - **Profiles** are separate budgeting contexts (e.g. "Personal" and
-  "Household") owned by one user. Every transaction belongs to exactly one
-  profile; switching the active profile in the sidebar switches the entire
+  "Household"). Every transaction belongs to exactly one profile;
+  switching the active profile in the sidebar switches the entire
   dashboard, transaction list, and reports to that profile's data.
   Categories are *not* profile-scoped — a user manages one category list
   shared across all of their profiles.
+- **Shared households**: `profile_members` is what actually grants access
+  to a profile, not `profiles.user_id` (which just records who originally
+  created it). A row's `role` is `owner` (can rename/delete the profile and
+  manage membership) or `member` (can view and add/edit/delete
+  transactions, but not manage who else is in it). A row's `status` is
+  `pending` (invited, not yet accepted — grants no access) or `active`
+  (can actually use the profile). Nobody is added to a shared budget
+  without accepting an invite first. Every route that touches a profile's
+  data — transactions, bulk operations, dashboard, reports — checks
+  `profile_members` with `status = 'active'`, not who created the
+  transaction or the profile.
 - Categories are global (`user_id IS NULL`) for the 12 predefined ones, or
   scoped to a user for custom ones — queried as a `UNION`-style `WHERE
   user_id IS NULL OR user_id = ?`.
@@ -125,14 +137,20 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 | DELETE | `/api/categories/:id` | Delete own custom category, or hide a default one for this user |
 | GET | `/api/categories/hidden` | List default categories this user has hidden |
 | POST | `/api/categories/:id/restore` | Un-hide a previously hidden default category |
-| GET | `/api/profiles` | List this user's budgeting profiles |
-| POST | `/api/profiles` | Create a profile `{ name }` |
-| PUT | `/api/profiles/:id` | Rename a profile |
-| DELETE | `/api/profiles/:id` | Delete a profile and its transactions (blocked if it's the user's last one) |
-| GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` |
+| GET | `/api/profiles` | List profiles this user is an active member of, with their `role` |
+| POST | `/api/profiles` | Create a profile `{ name }` — creator becomes its owner |
+| PUT | `/api/profiles/:id` | Rename a profile (owner only) |
+| DELETE | `/api/profiles/:id` | Delete a profile, its transactions, and all memberships (owner only, blocked if it's the user's last remaining profile) |
+| GET | `/api/profiles/invites` | Pending invites sent to this user |
+| POST | `/api/profiles/invites/:profileId/accept` | Accept a pending invite |
+| POST | `/api/profiles/invites/:profileId/decline` | Decline a pending invite |
+| GET | `/api/profiles/:id/members` | List a profile's members and their role/status (any active member) |
+| POST | `/api/profiles/:id/members` | Invite by email `{ email }` (owner only) — always returns the same generic response whether or not the email matches an account, to avoid leaking who's registered |
+| DELETE | `/api/profiles/:id/members/:userId` | Remove a member (owner only), or remove yourself to leave (owners can't leave this way — delete the profile instead) |
+| GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` — shows the whole shared ledger, not just what the requester personally entered |
 | POST | `/api/transactions` | Create — body includes `profileId` |
-| PUT | `/api/transactions/:id` | Update (only if owned) |
-| DELETE | `/api/transactions/:id` | Delete (only if owned) |
+| PUT | `/api/transactions/:id` | Update — any active member of the transaction's profile can edit it, not just whoever created it |
+| DELETE | `/api/transactions/:id` | Delete — same access rule as update |
 | POST | `/api/transactions/bulk-delete` | Delete many at once: `{ ids: [...] }` — multi-select in the UI |
 | PATCH | `/api/transactions/bulk-update` | Bulk-edit category and/or recurring flag: `{ ids: [...], categoryId?, isRecurring? }` |
 | GET/POST/PUT/DELETE | `/api/subscriptions[/:id]` | Available in the API; not currently linked from the UI |
@@ -150,6 +168,15 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
   `subscriptions` filters by `user_id = req.userId`, taken only from the
   verified token — this was tested by creating two accounts and confirming
   one user gets `404`, not another user's data, when guessing an ID.
+- **Shared-household access control**: a profile's data is only reachable
+  through an *active* row in `profile_members` — `pending` invites grant
+  nothing (tested: a freshly-invited account gets `404` on the profile's
+  transactions until it explicitly accepts). Only the `owner` role can
+  rename/delete a profile or manage its membership; `member` role can use
+  the shared ledger but not manage who else has access — every mutating
+  member-management route checks the caller's role before acting, tested
+  with a `member` account attempting to invite (`403`) and remove other
+  members (`403`).
 - **Input validation**: hand-written allow-list validators
   (`middleware/validate.js`) reject malformed amounts, dates, emails, and
   strings before they reach SQL.
@@ -173,9 +200,9 @@ frontend/src/
   api/client.js            axios instance, attaches JWT, redirects to /login on 401
   context/
     AuthContext.jsx        login/register/logout state, persisted to localStorage
-    ProfileContext.jsx     list of profiles + active profile, persisted to localStorage
+    ProfileContext.jsx     profiles + active profile + pending invite count + household actions
   components/
-    Layout.jsx              sidebar + page shell + profile switcher
+    Layout.jsx              sidebar + page shell + profile switcher + invite badge
     StatCard.jsx             dashboard summary tile
     TransactionForm.jsx      shared add/edit form
   pages/
@@ -183,7 +210,7 @@ frontend/src/
     Dashboard.jsx            summaries + charts (scoped to active profile)
     Transactions.jsx         filterable/sortable ledger with multi-select bulk actions
     Reports.jsx              longer-range trend charts
-    Profiles.jsx             create/rename/delete budgeting profiles
+    Profiles.jsx             create/rename/delete profiles, invites, member management
     Settings.jsx             category management (add/remove/hide/restore)
   utils/format.js            money/date formatting helpers
   styles.css                  design tokens + all component styles
@@ -202,6 +229,9 @@ if you want to bring the UI back later.
   sidebar switches the entire financial picture. A user always keeps at
   least one profile; deleting a profile deletes its transactions with a
   confirmation first.
+- **Shared households**: invite another account into a profile so more
+  than one person can see and manage the same budget. See "Shared
+  households" below for the full flow.
 - **Summary tiles**: monthly income, expenses, remaining, and largest
   category for the active profile.
 - **Charts**: income vs. expenses line chart (Dashboard, last 9 months),
@@ -218,6 +248,41 @@ if you want to bring the UI back later.
 - **Category management**: add custom categories, remove your own, or hide
   a built-in default from your view (reversible — see Settings).
 
+## Shared households
+
+Any profile can be shared with another account — useful for splitting
+"Household" between partners while keeping "Personal" private to each of
+you.
+
+- **Inviting**: from the Profiles page, expand a profile you own and enter
+  someone's email. This only works if they already have an account with
+  that email — there's no email/notification system, so let them know
+  directly to check their Profiles page. The invite response is
+  intentionally the same whether or not that email matches an account
+  (same principle as login/registration), so inviting doesn't reveal who's
+  registered.
+- **Accepting**: the invited person sees a "Pending invites" card at the
+  top of their Profiles page (and a badge on the sidebar's Profiles link)
+  with Accept/Decline. Nothing is shared until they explicitly accept —
+  being invited grants no access on its own.
+- **Once accepted**, a `member` can see the full shared ledger and
+  add/edit/delete any transaction in it — including ones the other person
+  entered, which is what makes it actually collaborative rather than two
+  people each only managing their own rows. A `member` cannot rename or
+  delete the profile, and cannot invite or remove other members.
+- **The `owner`** (whoever created the profile) can rename/delete it and
+  manage membership — invite new members, remove existing ones. An owner
+  can't remove themselves; giving up ownership means deleting the profile
+  entirely, which avoids ever leaving a household with no owner.
+- **Leaving**: any `member` can remove themselves from a shared profile at
+  any time from the Members panel.
+- This was tested end-to-end with two real accounts: one invited, the
+  invitee had no access until accepting, accepting granted it, a
+  transaction added by one account was edited by the other, a `member`
+  account was confirmed unable to invite or remove members (`403`), and
+  the owner was confirmed unable to self-remove (`400`, told to delete the
+  profile instead).
+
 ## Database seed data
 
 `backend/seed.js` creates one demo account
@@ -225,9 +290,14 @@ if you want to bring the UI back later.
 and "Household" — and ~9 months of clearly fictional transaction history
 split realistically between them (rent, shared utilities, and groceries in
 Household; subscriptions, entertainment, and the user's own salary in
-Personal, with random variance so months aren't identical). It also seeds a
-few sample subscriptions and bills directly in the database for
-completeness, even though those aren't currently linked from the UI.
+Personal, with random variance so months aren't identical). It also seeds
+a second account, `partner@example.com` / `DemoPass123!`, already an
+**active member** (not owner) of the "Household" profile — log in as
+either account to see the shared budget, or as the partner account to see
+what a `member`'s view and permissions look like without needing to run
+through the invite flow yourself first. It also seeds a few sample
+subscriptions and bills directly in the database for completeness, even
+though those aren't currently linked from the UI.
 
 ## Project file structure
 
@@ -236,7 +306,7 @@ finance-app/
   .github/workflows/
     deploy-pages.yml  builds frontend/ and publishes it to GitHub Pages on push to main
   backend/
-    db/                migrations/001_initial.sql, migrate.js, index.js (pool + migration runner)
+    db/                migrations/(001_initial.sql, 002_household_members.sql), migrate.js, index.js (pool + migration runner)
     middleware/        auth.js, validate.js, asyncHandler.js
     routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
     server.js
@@ -340,14 +410,26 @@ Manual flows to verify (all confirmed working during development):
 8. **Category duplication regression check**: restart the backend server
    two or three times in a row, then reload Settings — the category count
    should stay at 12 (+ any custom ones), never grow.
-9. **Data isolation**: register a second account in a private/incognito
-   window, confirm it starts empty and cannot see or modify the first
-   account's data or profiles (try hitting `PUT /api/transactions/:id` or
-   `GET /api/transactions?profileId=` for another user's ID — should 404).
-10. **Auth**: log out, confirm protected pages redirect to `/login`; try a
+9. **Shared households**: from Profiles, invite a second account (by
+   email) into a profile you own. Log in as that second account — it
+   should show up under Pending invites, and the profile itself should
+   *not* be visible or reachable yet (confirm `GET
+   /api/transactions?profileId=` for that profile 404s before accepting).
+   Accept it, confirm the profile now appears with role `member`, add a
+   transaction as the invited account, then confirm the original owner can
+   see and edit that same transaction. Confirm the `member` account gets
+   `403` trying to invite someone else or remove another member. Have the
+   member leave (self-removal from the Members panel), confirm the profile
+   disappears from their list again.
+10. **Data isolation**: register a second, unrelated account in a
+    private/incognito window, confirm it starts empty and cannot see or
+    modify the first account's data or profiles (try hitting `PUT
+    /api/transactions/:id` or `GET /api/transactions?profileId=` for
+    another user's ID — should 404).
+11. **Auth**: log out, confirm protected pages redirect to `/login`; try a
     wrong password, confirm a generic error with no hint about account
     existence.
-11. **If deployed to GitHub Pages**: navigate to a page like Transactions,
+12. **If deployed to GitHub Pages**: navigate to a page like Transactions,
     then hard-refresh the browser — should reload the same page correctly
     (confirms hash-based routing is working) rather than showing a GitHub
     Pages 404.
@@ -470,9 +552,14 @@ database surgery, no coordinating a maintenance window.
   for a personal project; a busier deployment would want to tune pool size
   against whatever connection limit your Postgres provider's free tier
   imposes (Neon and Supabase both cap free-tier connection counts).
-- **Shared household profiles**: profiles currently belong to a single
-  user. A real multi-person household would need a `profile_members` join
-  table so more than one login can see and edit the same profile.
+- **Email delivery for invites**: right now inviting someone into a
+  household only surfaces as a badge/card the next time they log in —
+  there's no actual email sent. Adding one (e.g. via Resend, Postmark, or
+  SES) would make invites discoverable without asking the person to check.
+- **Multiple owners per profile**: a shared household currently has exactly
+  one owner. Letting an owner promote a member to co-owner would help for
+  households where both partners want equal management rights rather than
+  one person being the sole point of control.
 - Auto-generate transactions from active subscriptions/recurring bills on
   their due dates (currently they're tracked but not auto-posted).
 - CSV import/export.

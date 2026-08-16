@@ -12,12 +12,17 @@ export function ProfileProvider({ children }) {
     return stored ? Number(stored) : null;
   });
   const [loading, setLoading] = useState(true);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
-    const { data } = await client.get('/profiles');
+    const [{ data }, invitesRes] = await Promise.all([
+      client.get('/profiles'),
+      client.get('/profiles/invites'),
+    ]);
     setProfiles(data.profiles);
+    setPendingInviteCount(invitesRes.data.invites.length);
     // If there's no active profile yet, or the stored one no longer
     // exists (e.g. it was deleted in another tab), fall back to the first.
     setActiveProfileId((current) => {
@@ -55,11 +60,48 @@ export function ProfileProvider({ children }) {
     await refresh();
   }, [refresh]);
 
+  // ---------- Sharing / household membership ----------
+
+  const inviteMember = useCallback(async (profileId, email) => {
+    await client.post(`/profiles/${profileId}/members`, { email });
+  }, []);
+
+  const getMembers = useCallback(async (profileId) => {
+    const { data } = await client.get(`/profiles/${profileId}/members`);
+    return data.members;
+  }, []);
+
+  const removeMember = useCallback(async (profileId, userId) => {
+    await client.delete(`/profiles/${profileId}/members/${userId}`);
+    // Removing yourself (leaving) changes which profiles you can see.
+    await refresh();
+  }, [refresh]);
+
+  const getInvites = useCallback(async () => {
+    const { data } = await client.get('/profiles/invites');
+    return data.invites;
+  }, []);
+
+  const acceptInvite = useCallback(async (profileId) => {
+    await client.post(`/profiles/invites/${profileId}/accept`);
+    await refresh();
+  }, [refresh]);
+
+  const declineInvite = useCallback(async (profileId) => {
+    await client.post(`/profiles/invites/${profileId}/decline`);
+    await refresh();
+  }, [refresh]);
+
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
 
   return (
     <ProfileContext.Provider
-      value={{ profiles, activeProfileId, activeProfile, loading, switchProfile, createProfile, renameProfile, deleteProfile, refresh }}
+      value={{
+        profiles, activeProfileId, activeProfile, loading, pendingInviteCount,
+        switchProfile, createProfile, renameProfile, deleteProfile,
+        inviteMember, getMembers, removeMember, getInvites, acceptInvite, declineInvite,
+        refresh,
+      }}
     >
       {children}
     </ProfileContext.Provider>

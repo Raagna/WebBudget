@@ -15,15 +15,21 @@ function monthBounds(yyyyMm) {
 }
 
 // All dashboard figures are scoped to one profile at a time, so switching
-// profiles in the UI shows an entirely separate financial picture.
+// profiles in the UI shows an entirely separate financial picture. Access
+// is membership-based (see routes/transactions.js for the full rationale):
+// any active member of the profile - owner or invited member - can view
+// its dashboard, not just the original creator.
 async function requireOwnedProfile(req, res) {
   const profileId = Number(req.query.profileId);
   if (!Number.isInteger(profileId) || profileId <= 0) {
     res.status(400).json({ error: 'A valid profileId is required' });
     return null;
   }
-  const owned = await queryOne('SELECT id FROM profiles WHERE id = ? AND user_id = ?', [profileId, req.userId]);
-  if (!owned) {
+  const member = await queryOne(
+    `SELECT 1 FROM profile_members WHERE profile_id = ? AND user_id = ? AND status = 'active'`,
+    [profileId, req.userId]
+  );
+  if (!member) {
     res.status(404).json({ error: 'Profile not found' });
     return null;
   }

@@ -1,13 +1,18 @@
 // Seeds one demo user with two budgeting profiles - "Personal" and
 // "Household" - each with ~9 months of clearly fictional transaction
 // history, so the dashboard, charts, and multi-profile switching all have
-// something meaningful to show immediately.
+// something meaningful to show immediately. Also seeds a second demo
+// account that's an active member (not owner) of the Household profile,
+// so shared-household access is demonstrable without first setting up an
+// invite yourself.
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { withTransaction } = require('./db');
 
 const DEMO_EMAIL = 'demo@example.com';
 const DEMO_PASSWORD = 'DemoPass123!';
+const PARTNER_EMAIL = 'partner@example.com';
+const PARTNER_PASSWORD = 'DemoPass123!';
 
 function isoDate(d) {
   return d.toISOString().slice(0, 10);
@@ -24,6 +29,7 @@ function monthsAgo(n, day = 1) {
 async function run() {
   await withTransaction(async (tx) => {
     await tx.run('DELETE FROM users WHERE email = ?', [DEMO_EMAIL]);
+    await tx.run('DELETE FROM users WHERE email = ?', [PARTNER_EMAIL]);
 
     const passwordHash = bcrypt.hashSync(DEMO_PASSWORD, 12);
     const user = await tx.queryOne(
@@ -42,6 +48,42 @@ async function run() {
     );
     const personalProfileId = personalProfile.id;
     const householdProfileId = householdProfile.id;
+
+    // profile_members is what actually grants access to a profile - see
+    // routes/profiles.js. Without these rows the demo account would have
+    // profiles that exist but that GET /api/profiles never returns.
+    await tx.run(
+      `INSERT INTO profile_members (profile_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`,
+      [personalProfileId, userId]
+    );
+    await tx.run(
+      `INSERT INTO profile_members (profile_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`,
+      [householdProfileId, userId]
+    );
+
+    // Second demo account, added as an active (not pending) member of the
+    // Household profile - demonstrates shared access immediately without
+    // requiring a manual invite/accept round trip first.
+    const partnerHash = bcrypt.hashSync(PARTNER_PASSWORD, 12);
+    const partner = await tx.queryOne(
+      'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id',
+      ['Demo Partner', PARTNER_EMAIL, partnerHash]
+    );
+    // The partner also needs their own profile to land on (every account
+    // always has at least one it owns outright).
+    const partnerPersonalProfile = await tx.queryOne(
+      'INSERT INTO profiles (user_id, name) VALUES (?, ?) RETURNING id',
+      [partner.id, 'Personal']
+    );
+    await tx.run(
+      `INSERT INTO profile_members (profile_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`,
+      [partnerPersonalProfile.id, partner.id]
+    );
+    await tx.run(
+      `INSERT INTO profile_members (profile_id, user_id, role, status, invited_by)
+       VALUES (?, ?, 'member', 'active', ?)`,
+      [householdProfileId, partner.id, userId]
+    );
 
     async function catId(name) {
       const row = await tx.queryOne('SELECT id FROM categories WHERE name = ? AND user_id IS NULL', [name]);
@@ -160,7 +202,9 @@ async function run() {
 
   console.log('Seed complete.');
   console.log(`Demo login -> email: ${DEMO_EMAIL}  password: ${DEMO_PASSWORD}`);
+  console.log(`Partner login (shared "Household" access) -> email: ${PARTNER_EMAIL}  password: ${PARTNER_PASSWORD}`);
   console.log('Two profiles created: "Personal" and "Household" - switch between them in the sidebar.');
+  console.log('The partner account is already an active member of "Household" - log in as either to see shared data.');
   process.exit(0);
 }
 

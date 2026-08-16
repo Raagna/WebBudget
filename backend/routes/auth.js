@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { queryOne, run, withTransaction } = require('../db');
+const { queryOne, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { signToken } = require('../middleware/auth');
 const { isNonEmptyString, isValidEmail, validateBody } = require('../middleware/validate');
@@ -30,13 +30,21 @@ router.post(
 
     // Create the user and their first profile together so they always
     // land on a working "Personal" budget with nowhere-to-put-a-transaction
-    // gaps in the UI.
+    // gaps in the UI. profile_members is what actually grants access (see
+    // routes/profiles.js) - creating the profile alone isn't enough.
     const user = await withTransaction(async (tx) => {
       const inserted = await tx.queryOne(
         'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id',
         [name.trim(), normalizedEmail, passwordHash]
       );
-      await tx.run('INSERT INTO profiles (user_id, name) VALUES (?, ?)', [inserted.id, 'Personal']);
+      const profile = await tx.queryOne(
+        'INSERT INTO profiles (user_id, name) VALUES (?, ?) RETURNING id',
+        [inserted.id, 'Personal']
+      );
+      await tx.run(
+        `INSERT INTO profile_members (profile_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`,
+        [profile.id, inserted.id]
+      );
       return inserted;
     });
 
@@ -68,12 +76,25 @@ router.post(
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Defensive backfill: an account created before profiles existed
-    // (or restored from an old backup) might have none. Give it one
-    // rather than leaving the user stuck with nowhere to log a transaction.
-    const profileCount = await queryOne('SELECT COUNT(*)::int AS n FROM profiles WHERE user_id = ?', [user.id]);
-    if (profileCount.n === 0) {
-      await run('INSERT INTO profiles (user_id, name) VALUES (?, ?)', [user.id, 'Personal']);
+    // Defensive backfill: an account with no active profile membership
+    // (created before profiles/households existed, or restored from an
+    // old backup) would otherwise be stuck with nowhere to log a
+    // transaction. Give it a fresh "Personal" profile it owns outright.
+    const membershipCount = await queryOne(
+      `SELECT COUNT(*)::int AS n FROM profile_members WHERE user_id = ? AND status = 'active'`,
+      [user.id]
+    );
+    if (membershipCount.n === 0) {
+      await withTransaction(async (tx) => {
+        const profile = await tx.queryOne(
+          'INSERT INTO profiles (user_id, name) VALUES (?, ?) RETURNING id',
+          [user.id, 'Personal']
+        );
+        await tx.run(
+          `INSERT INTO profile_members (profile_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`,
+          [profile.id, user.id]
+        );
+      });
     }
 
     const token = signToken(user.id);

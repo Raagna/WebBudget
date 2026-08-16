@@ -34,22 +34,44 @@ function serialize(row) {
 }
 
 // Every route below operates within a single profile. This helper confirms
-// the requested profile actually belongs to the authenticated user before
-// any query touches it, so a user can never read or write another
-// account's profile by guessing an id. Returns null (and has already sent
-// a response) if the check fails.
+// the authenticated user has an active membership on the requested profile
+// before any query touches it - either as the original owner or as an
+// invited-and-accepted member - so a user can never read or write a
+// profile they're not part of by guessing an id. Returns null (and has
+// already sent a response) if the check fails.
 async function requireOwnedProfile(req, res, profileIdRaw) {
   const profileId = Number(profileIdRaw);
   if (!Number.isInteger(profileId) || profileId <= 0) {
     res.status(400).json({ error: 'A valid profileId is required' });
     return null;
   }
-  const owned = await queryOne('SELECT id FROM profiles WHERE id = ? AND user_id = ?', [profileId, req.userId]);
-  if (!owned) {
+  const member = await queryOne(
+    `SELECT 1 FROM profile_members WHERE profile_id = ? AND user_id = ? AND status = 'active'`,
+    [profileId, req.userId]
+  );
+  if (!member) {
     res.status(404).json({ error: 'Profile not found' });
     return null;
   }
   return profileId;
+}
+
+// Given a transaction id, confirms the requester is an active member of
+// the PROFILE that transaction belongs to - not just that they personally
+// created it. This is what makes shared households actually collaborative:
+// either partner can fix or remove a transaction the other one entered.
+async function requireTransactionAccess(req, res, transactionId) {
+  const row = await queryOne(
+    `SELECT t.id, t.profile_id FROM transactions t
+     JOIN profile_members pm ON pm.profile_id = t.profile_id AND pm.user_id = ? AND pm.status = 'active'
+     WHERE t.id = ?`,
+    [req.userId, transactionId]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Transaction not found' });
+    return null;
+  }
+  return row;
 }
 
 // GET /api/transactions?profileId=&type=&categoryId=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
@@ -63,8 +85,11 @@ router.get('/', asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
   const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
-  const clauses = ['t.user_id = ?', 't.profile_id = ?'];
-  const params = [req.userId, profileId];
+  // Filtered by profile only, NOT by who entered each transaction - every
+  // active member of a shared profile sees the whole shared ledger, not
+  // just the rows they personally added.
+  const clauses = ['t.profile_id = ?'];
+  const params = [profileId];
 
   if (type === 'income' || type === 'expense') {
     clauses.push('t.type = ?');
@@ -138,6 +163,9 @@ router.post(
       ? recurringInterval
       : null;
 
+    // user_id still records who actually entered it (shown nowhere in the
+    // UI today, but useful history) - authorization for everything else
+    // flows through profile_id + profile_members, not this column.
     const inserted = await queryOne(
       `INSERT INTO transactions
          (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
@@ -167,10 +195,8 @@ router.put(
   asyncHandler(async (req, res) => {
     const { amount, type, description = '', date, categoryId, isRecurring, recurringInterval } = req.body;
 
-    // Ownership check happens in the WHERE clause of the UPDATE itself, so
-    // a user can never modify another user's transaction by guessing an id.
-    const existing = await queryOne('SELECT id FROM transactions WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
-    if (!existing) return res.status(404).json({ error: 'Transaction not found' });
+    const access = await requireTransactionAccess(req, res, req.params.id);
+    if (access === null) return;
 
     if (categoryId !== undefined && categoryId !== null) {
       const cat = await queryOne(
@@ -189,8 +215,8 @@ router.put(
       `UPDATE transactions
        SET amount_cents = ?, type = ?, description = ?, occurred_on = ?,
            category_id = ?, is_recurring = ?, recurring_interval = ?, updated_at = NOW()
-       WHERE id = ? AND user_id = ?`,
-      [toCents(amount), type, description.trim(), date, categoryId || null, recurring, interval, req.params.id, req.userId]
+       WHERE id = ?`,
+      [toCents(amount), type, description.trim(), date, categoryId || null, recurring, interval, req.params.id]
     );
 
     const row = await queryOne(
@@ -204,15 +230,19 @@ router.put(
 );
 
 router.delete('/:id', asyncHandler(async (req, res) => {
-  const result = await run('DELETE FROM transactions WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
-  if (result.rowCount === 0) return res.status(404).json({ error: 'Transaction not found' });
+  const access = await requireTransactionAccess(req, res, req.params.id);
+  if (access === null) return;
+
+  await run('DELETE FROM transactions WHERE id = ?', [req.params.id]);
   res.status(204).end();
 }));
 
 // ---------- Bulk operations (multi-select in the UI) ----------
-// Both endpoints scope by user_id in addition to the id list, so a
-// crafted request naming another user's transaction ids simply skips
-// those rows rather than acting on them - the response's affected count
+// Both endpoints join through profile_members rather than filtering by
+// user_id, so any active member of a shared profile can bulk-act on the
+// whole shared ledger - but only on rows in profiles they actually belong
+// to. A crafted request naming a transaction id from a profile the caller
+// isn't a member of simply skips that row; the response's affected count
 // reveals if some ids were skipped for that reason.
 
 router.post(
@@ -222,7 +252,10 @@ router.post(
     const { ids } = req.body;
     const placeholders = ids.map(() => '?').join(',');
     const result = await run(
-      `DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`,
+      `DELETE FROM transactions t
+       USING profile_members pm
+       WHERE pm.profile_id = t.profile_id AND pm.user_id = ? AND pm.status = 'active'
+         AND t.id IN (${placeholders})`,
       [req.userId, ...ids]
     );
     res.json({ deleted: result.rowCount });
@@ -258,7 +291,10 @@ router.patch(
 
     const placeholders = ids.map(() => '?').join(',');
     const result = await run(
-      `UPDATE transactions SET ${fields.join(', ')} WHERE user_id = ? AND id IN (${placeholders})`,
+      `UPDATE transactions t SET ${fields.join(', ')}
+       FROM profile_members pm
+       WHERE pm.profile_id = t.profile_id AND pm.user_id = ? AND pm.status = 'active'
+         AND t.id IN (${placeholders})`,
       [...params, req.userId, ...ids]
     );
     res.json({ updated: result.rowCount });

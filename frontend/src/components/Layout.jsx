@@ -12,7 +12,7 @@ const NAV_ITEMS = [
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
-  const { profiles, activeProfileId, switchProfile, loading } = useProfiles();
+  const { profiles, activeProfileId, switchProfile, loading, pendingInviteCount } = useProfiles();
 
   return (
     <div className="app-shell">
@@ -45,6 +45,9 @@ export default function Layout({ children }) {
                 className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
               >
                 {item.label}
+                {item.to === '/profiles' && pendingInviteCount > 0 && (
+                  <span className="nav-badge">{pendingInviteCount}</span>
+                )}
               </NavLink>
             </li>
           ))}
