@@ -1,8 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { queryOne, withTransaction } = require('../db');
+const { query, queryOne, run, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
-const { signToken } = require('../middleware/auth');
+const { requireAuth, signToken } = require('../middleware/auth');
 const { isNonEmptyString, isValidEmail, validateBody } = require('../middleware/validate');
 
 const router = express.Router();
@@ -99,6 +99,52 @@ router.post(
 
     const token = signToken(user.id);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+  })
+);
+
+// Deleting an account requires the current password, same as any other
+// destructive account action - a stolen/left-open session alone isn't
+// enough. Deleting a user cascades to everything they own directly
+// (profiles, custom categories, transactions, subscriptions, bills - see
+// the ON DELETE CASCADE foreign keys in the migrations), which is exactly
+// right for profiles only they use. But a profile they OWN that has other
+// *active* members is a shared household - cascading it away would delete
+// that household and its transaction history out from under everyone
+// else in it without any warning or consent from them. So this blocks
+// deletion if the user is the sole owner of any profile with other active
+// members, and tells them exactly which profile(s) to deal with first
+// (remove the other members, or hand the household off some other way -
+// there's no ownership-transfer feature yet, tracked in the README).
+router.delete(
+  '/account',
+  requireAuth,
+  validateBody({ password: (v) => typeof v === 'string' && v.length > 0 }),
+  asyncHandler(async (req, res) => {
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.userId]);
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    const valid = bcrypt.compareSync(req.body.password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    const blockedProfiles = await query(
+      `SELECT p.name,
+              (SELECT COUNT(*)::int FROM profile_members m WHERE m.profile_id = p.id AND m.status = 'active') AS member_count
+       FROM profiles p
+       JOIN profile_members pm ON pm.profile_id = p.id AND pm.user_id = ? AND pm.role = 'owner' AND pm.status = 'active'
+       WHERE (SELECT COUNT(*)::int FROM profile_members m WHERE m.profile_id = p.id AND m.status = 'active') > 1`,
+      [req.userId]
+    );
+    if (blockedProfiles.length > 0) {
+      const names = blockedProfiles.map((p) => `"${p.name}" (${p.member_count} members)`).join(', ');
+      return res.status(400).json({
+        error: `You own shared profiles with other active members: ${names}. Remove the other members (or have them leave) before deleting your account.`,
+      });
+    }
+
+    await run('DELETE FROM users WHERE id = ?', [req.userId]);
+    res.status(204).end();
   })
 );
 

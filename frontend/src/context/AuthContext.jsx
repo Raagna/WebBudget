@@ -28,11 +28,17 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem('finance_token');
     localStorage.removeItem('finance_user');
+    localStorage.removeItem('finance_active_profile');
     setUser(null);
   }, []);
 
+  const deleteAccount = useCallback(async (password) => {
+    await client.delete('/auth/account', { data: { password } });
+    logout();
+  }, [logout]);
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, register, logout, deleteAccount, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

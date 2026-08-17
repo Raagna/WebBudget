@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import client from '../api/client';
 import TransactionForm from '../components/TransactionForm.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
@@ -15,6 +15,10 @@ export default function Transactions() {
   const [selected, setSelected] = useState(() => new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Remembers the row index of the last checkbox click, so a shift+click
+  // elsewhere in the list knows what range to select. Doesn't need to
+  // trigger a re-render on its own, hence a ref rather than state.
+  const lastCheckedIndexRef = useRef(null);
 
   // "type" is now a filter/sort dimension rather than a separate page -
   // All / Income / Expense, applied the same way as category or date.
@@ -59,16 +63,40 @@ export default function Transactions() {
     load();
   }
 
-  function toggleOne(id) {
+  function toggleOne(id, index, shiftKey) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      // Shift+click selects every row between the last-clicked checkbox
+      // and this one, inclusive - same convention as Gmail/file explorers.
+      // Falls back to a normal single toggle if there's no prior click to
+      // anchor a range to yet.
+      if (shiftKey && lastCheckedIndexRef.current !== null) {
+        const start = Math.min(lastCheckedIndexRef.current, index);
+        const end = Math.max(lastCheckedIndexRef.current, index);
+        for (let i = start; i <= end; i++) {
+          next.add(transactions[i].id);
+        }
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
+    lastCheckedIndexRef.current = index;
+  }
+
+  function selectAll() {
+    setSelected(new Set(transactions.map((t) => t.id)));
+    lastCheckedIndexRef.current = null;
   }
 
   function toggleAll() {
-    setSelected((prev) => (prev.size === transactions.length ? new Set() : new Set(transactions.map((t) => t.id))));
+    if (selected.size === transactions.length) {
+      setSelected(new Set());
+    } else {
+      selectAll();
+    }
   }
 
   const allSelected = transactions.length > 0 && selected.size === transactions.length;
@@ -168,6 +196,9 @@ export default function Transactions() {
       {selected.size > 0 && (
         <div className="bulk-toolbar">
           <span className="count">{selected.size} selected</span>
+          {selected.size < transactions.length && (
+            <button className="btn btn-secondary btn-sm" onClick={selectAll}>Select all {transactions.length}</button>
+          )}
           <div className="bulk-edit-row">
             <select value={bulkCategoryId} onChange={(e) => setBulkCategoryId(e.target.value)}>
               <option value="">Set category…</option>
@@ -183,6 +214,13 @@ export default function Transactions() {
             Delete selected
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setSelected(new Set())}>Clear</button>
+        </div>
+      )}
+
+      {selected.size === 0 && transactions.length > 0 && (
+        <div className="select-hint">
+          <button className="btn btn-secondary btn-sm" onClick={selectAll}>Select all {transactions.length}</button>
+          <span>Tip: hold Shift and click a checkbox to select everything in between.</span>
         </div>
       )}
 
@@ -204,10 +242,15 @@ export default function Transactions() {
               </tr>
             </thead>
             <tbody>
-              {transactions.map((t) => (
+              {transactions.map((t, idx) => (
                 <tr key={t.id}>
                   <td className="select-col">
-                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleOne(t.id)} aria-label={`Select ${t.description}`} />
+                    <input
+                      type="checkbox"
+                      checked={selected.has(t.id)}
+                      onChange={(e) => toggleOne(t.id, idx, e.nativeEvent.shiftKey)}
+                      aria-label={`Select ${t.description}`}
+                    />
                   </td>
                   <td className="mono">{formatDate(t.date)}</td>
                   <td>{t.description}</td>

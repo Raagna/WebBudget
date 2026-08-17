@@ -132,6 +132,7 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 |---|---|---|
 | POST | `/api/auth/register` | Create account, returns JWT |
 | POST | `/api/auth/login` | Returns JWT |
+| DELETE | `/api/auth/account` | Permanently delete your own account — requires `{ password }` to confirm; blocked (`400`) if you own a shared profile with other active members |
 | GET | `/api/categories` | Default + user's custom categories, minus anything hidden |
 | POST | `/api/categories` | Create a custom category |
 | DELETE | `/api/categories/:id` | Delete own custom category, or hide a default one for this user |
@@ -202,7 +203,7 @@ frontend/src/
     AuthContext.jsx        login/register/logout state, persisted to localStorage
     ProfileContext.jsx     profiles + active profile + pending invite count + household actions
   components/
-    Layout.jsx              sidebar + page shell + profile switcher + invite badge
+    Layout.jsx              sidebar + mobile hamburger toggle + profile switcher + invite badge
     StatCard.jsx             dashboard summary tile
     TransactionForm.jsx      shared add/edit form
   pages/
@@ -211,7 +212,7 @@ frontend/src/
     Transactions.jsx         filterable/sortable ledger with multi-select bulk actions
     Reports.jsx              longer-range trend charts
     Profiles.jsx             create/rename/delete profiles, invites, member management
-    Settings.jsx             category management (add/remove/hide/restore)
+    Settings.jsx             category management (add/remove/hide/restore), account deletion
   utils/format.js            money/date formatting helpers
   styles.css                  design tokens + all component styles
 ```
@@ -220,6 +221,15 @@ frontend/src/
 their sidebar links to keep navigation focused on transactions. The
 underlying `/api/subscriptions` and `/api/bills` endpoints are still there
 if you want to bring the UI back later.
+
+**Mobile navigation:** below 720px wide, the sidebar collapses into a top
+bar with a hamburger toggle. Tapping it drops down the full nav (profile
+switcher, links, account footer) as an overlay; tapping a link, or tapping
+outside the panel, closes it again. The account footer's email address
+truncates with an ellipsis rather than overlapping the Sign out button
+regardless of how long it is (a `min-width: 0` fix on the flex container —
+without it, a flex child won't shrink below its content's natural width,
+which is what was letting a long email push into the button).
 
 ## Dashboard & financial features
 
@@ -243,10 +253,20 @@ if you want to bring the UI back later.
   descending.
 - **Multi-select bulk actions**: check multiple transactions in the ledger
   to bulk-delete them or bulk-reassign their category in one action.
+  **Shift+click** a checkbox to select every row between it and your last
+  click, inclusive (same convention as Gmail/file explorers), or use the
+  **Select all** button to grab everything currently loaded at once.
 - **Recurring tracking**: transactions support a recurring flag with an
   interval (weekly/monthly/yearly).
 - **Category management**: add custom categories, remove your own, or hide
   a built-in default from your view (reversible — see Settings).
+- **Account deletion**: from Settings, permanently delete your account
+  (requires re-entering your password). Deletes everything you own outright
+  — profiles, custom categories, transactions — but is blocked if you
+  currently own a shared household with other active members, so deleting
+  your account can never silently destroy a budget other people are
+  actively using. Remove those members (or have them leave) first, and it
+  goes through.
 
 ## Shared households
 
@@ -433,6 +453,21 @@ Manual flows to verify (all confirmed working during development):
     then hard-refresh the browser — should reload the same page correctly
     (confirms hash-based routing is working) rather than showing a GitHub
     Pages 404.
+13. **Bulk selection**: on Transactions, click one checkbox, then shift+click
+    a checkbox several rows down — every row in between should become
+    selected. Use the "Select all" button and confirm it grabs every
+    currently-loaded transaction, not just the visible ones you'd clicked.
+14. **Mobile nav**: shrink the browser below ~720px wide (or use devtools'
+    device toolbar) — the sidebar should collapse to a top bar with a
+    hamburger icon; tapping it should drop down the full nav as an
+    overlay, and tapping a link or tapping outside the panel should close
+    it again.
+15. **Account deletion**: from Settings, try deleting your account with
+    the wrong password (should show an error, account untouched). While
+    you own a shared profile with another active member, try deleting —
+    should be blocked with a message naming the profile. Remove that
+    member (or have a second test account leave), then delete again —
+    should succeed and log you out; confirm the old login now fails.
 
 For automated backend testing, `curl` or a tool like Postman can exercise
 the endpoints in the API table above — every route returns JSON and
@@ -544,6 +579,65 @@ database surgery, no coordinating a maintenance window.
   the frontend if you'd rather avoid the hash-routing trade-off (just
   swap `HashRouter` back to `BrowserRouter` in `App.jsx` — those hosts
   support the server-side rewrites that need).
+
+## Feature ideas worth considering
+
+Beyond the smaller fixes in "Future improvements" above, here are bigger
+product directions that would meaningfully extend what this app does.
+None of these are built — they're brainstormed starting points if you want
+to keep growing this beyond a transaction tracker.
+
+**Investing & net worth**
+- **Stock/investment portfolio tracker**: a new `holdings` table (ticker,
+  shares, cost basis, account) plus a market-data API (e.g. Alpha Vantage,
+  Finnhub, or IEX Cloud all have free tiers) to show current value and
+  gain/loss alongside the existing cash-flow dashboard.
+- **Net worth over time**: combine cash (from transactions) with manually
+  entered assets and liabilities (home value, loan balances, investment
+  accounts) into a single trend line — most personal finance apps treat
+  this as the "headline" number, and this app doesn't have one yet.
+- **Debt payoff planner**: snowball/avalanche payoff schedules for
+  loans/credit cards, with a projected payoff date that updates as
+  payments are logged.
+
+**Automation & intelligence**
+- **Bank account sync** via Plaid or a similar aggregator, so transactions
+  import automatically instead of manual entry — the biggest scope jump on
+  this list, since it means handling OAuth-style bank linking, webhook
+  updates, and reconciling duplicate/pending transactions.
+- **Receipt scanning**: photograph or upload a receipt, OCR it (e.g. with
+  a hosted vision API), and pre-fill the transaction form.
+- **Anomaly / insight detection**: flag "this category is 40% higher than
+  your 6-month average" or detect a subscription's price quietly went up
+  between billing cycles.
+- **Auto-categorization**: suggest a category based on the description,
+  learned from how the user has categorized similar transactions before.
+
+**Household & goals**
+- **Savings goals**: a target amount and date per goal (e.g. "vacation
+  fund"), with progress tracked against contributions - pairs naturally
+  with the existing profile/household model.
+- **Per-category budgets with alerts**: already listed above as a smaller
+  version of this; the fuller version would show a live progress bar per
+  category on the dashboard and support rollover of unused budget.
+- **Bill payment reminders**: push/email notifications a few days before a
+  recurring bill is due, built on top of the `bills` table that already
+  exists in the API but isn't currently surfaced in the UI.
+
+**Reporting & export**
+- **CSV/PDF export** of transactions or a monthly summary report, for
+  taxes or sharing with an accountant.
+- **Year-in-review report**: an annual summary — biggest spending
+  category, income growth, savings rate — generated once a year like a
+  lot of finance apps do in January.
+
+**Mobile & accessibility**
+- **A proper installable mobile app** (React Native or a PWA wrapper)
+  rather than a mobile-responsive web layout, for offline access and home
+  screen installability.
+- **Voice or quick-add entry**: a single-line natural-language input
+  ("$12 coffee today") that gets parsed into amount/category/date, for
+  faster logging on the go.
 
 ## Future improvements
 
