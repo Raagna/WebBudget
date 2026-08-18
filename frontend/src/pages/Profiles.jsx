@@ -2,17 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { formatDate } from '../utils/format.js';
+import { CURRENCIES } from '../utils/currencies.js';
 
 export default function Profiles() {
   const { user } = useAuth();
   const {
-    profiles, activeProfileId, switchProfile, createProfile, renameProfile, deleteProfile,
-    inviteMember, getMembers, removeMember, getInvites, acceptInvite, declineInvite,
+    profiles, activeProfileId, switchProfile, createProfile, renameProfile,
+    updateProfileCurrency, deleteProfile,
+    inviteMember, getMembers, removeMember, promoteMember, demoteMember,
+    getInvites, acceptInvite, declineInvite,
   } = useProfiles();
 
   const [newName, setNewName] = useState('');
+  const [newCurrency, setNewCurrency] = useState('USD');
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [editingCurrency, setEditingCurrency] = useState('USD');
   const [error, setError] = useState('');
 
   const [invites, setInvites] = useState([]);
@@ -24,6 +29,7 @@ export default function Profiles() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [memberActionError, setMemberActionError] = useState('');
 
   const loadInvites = useCallback(async () => {
     setInvitesLoading(true);
@@ -39,8 +45,9 @@ export default function Profiles() {
     setError('');
     if (!newName.trim()) { setError('Give the new profile a name, e.g. "Household" or "Side business".'); return; }
     try {
-      await createProfile(newName.trim());
+      await createProfile(newName.trim(), newCurrency);
       setNewName('');
+      setNewCurrency('USD');
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create this profile.');
     }
@@ -49,11 +56,13 @@ export default function Profiles() {
   function startEdit(p) {
     setEditingId(p.id);
     setEditingName(p.name);
+    setEditingCurrency(p.currency);
   }
 
   async function saveEdit(id) {
     if (!editingName.trim()) return;
     await renameProfile(id, editingName.trim());
+    await updateProfileCurrency(id, editingCurrency);
     setEditingId(null);
   }
 
@@ -75,6 +84,7 @@ export default function Profiles() {
     setExpandedId(profile.id);
     setInviteEmail('');
     setInviteMessage('');
+    setMemberActionError('');
     setMembersLoading(true);
     const members = await getMembers(profile.id);
     setMembersByProfile((prev) => ({ ...prev, [profile.id]: members }));
@@ -106,11 +116,37 @@ export default function Profiles() {
   async function handleRemoveMember(profileId, memberUserId, isSelf) {
     const msg = isSelf ? 'Leave this household? You’ll lose access to its transactions.' : 'Remove this member? They’ll lose access to this household.';
     if (!confirm(msg)) return;
-    await removeMember(profileId, memberUserId);
-    if (isSelf) {
-      setExpandedId(null);
-    } else {
+    setMemberActionError('');
+    try {
+      await removeMember(profileId, memberUserId);
+      if (isSelf) {
+        setExpandedId(null);
+      } else {
+        await refreshMembers(profileId);
+      }
+    } catch (err) {
+      setMemberActionError(err.response?.data?.error || 'Could not complete that action.');
+    }
+  }
+
+  async function handlePromote(profileId, memberUserId) {
+    setMemberActionError('');
+    try {
+      await promoteMember(profileId, memberUserId);
       await refreshMembers(profileId);
+    } catch (err) {
+      setMemberActionError(err.response?.data?.error || 'Could not promote this member.');
+    }
+  }
+
+  async function handleDemote(profileId, memberUserId) {
+    if (!confirm('Demote this owner to a regular member?')) return;
+    setMemberActionError('');
+    try {
+      await demoteMember(profileId, memberUserId);
+      await refreshMembers(profileId);
+    } catch (err) {
+      setMemberActionError(err.response?.data?.error || 'Could not demote this owner.');
     }
   }
 
@@ -158,6 +194,12 @@ export default function Profiles() {
           <label>New profile name</label>
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Household, Side business, Vacation fund" />
         </div>
+        <div className="form-field">
+          <label>Currency</label>
+          <select value={newCurrency} onChange={(e) => setNewCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
+          </select>
+        </div>
         <button className="btn btn-primary" type="submit">Create profile</button>
       </form>
 
@@ -165,24 +207,31 @@ export default function Profiles() {
         const isOwner = p.role === 'owner';
         const isExpanded = expandedId === p.id;
         const members = membersByProfile[p.id] || [];
+        const activeOwnerCount = members.filter((m) => m.role === 'owner' && m.status === 'active').length;
 
         return (
           <div key={p.id} className="card" style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
               <div>
                 {editingId === p.id ? (
-                  <input
-                    autoFocus
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(p.id); if (e.key === 'Escape') setEditingId(null); }}
-                    style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 3 }}
-                  />
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      autoFocus
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(p.id); if (e.key === 'Escape') setEditingId(null); }}
+                      style={{ padding: '5px 8px', border: '1px solid var(--line)', borderRadius: 3 }}
+                    />
+                    <select value={editingCurrency} onChange={(e) => setEditingCurrency(e.target.value)}>
+                      {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
                 ) : (
                   <>
                     <strong style={{ fontSize: 15 }}>{p.name}</strong>
                     {p.id === activeProfileId && <span className="tag" style={{ marginLeft: 8 }}>Active</span>}
                     <span className="tag recurring" style={{ marginLeft: 6 }}>{isOwner ? 'Owner' : 'Member'}</span>
+                    <span className="tag" style={{ marginLeft: 6 }}>{p.currency}</span>
                   </>
                 )}
                 <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
@@ -203,7 +252,7 @@ export default function Profiles() {
                     <button className="btn btn-secondary btn-sm" onClick={() => toggleMembers(p)}>
                       {isExpanded ? 'Hide members' : 'Members'}
                     </button>
-                    {isOwner && <button className="btn btn-secondary btn-sm" onClick={() => startEdit(p)}>Rename</button>}
+                    {isOwner && <button className="btn btn-secondary btn-sm" onClick={() => startEdit(p)}>Edit</button>}
                     {isOwner && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p)}>Delete</button>}
                   </>
                 )}
@@ -216,12 +265,21 @@ export default function Profiles() {
                   <div className="empty-state">Loading members…</div>
                 ) : (
                   <>
+                    {memberActionError && <div className="auth-error" style={{ marginBottom: 12 }}>{memberActionError}</div>}
                     <table className="ledger" style={{ marginBottom: isOwner ? 14 : 0 }}>
                       <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
                       <tbody>
                         {members.map((m) => {
                           const isSelf = m.email === user?.email;
-                          const canRemove = (isOwner && m.role !== 'owner') || (isSelf && m.role !== 'owner');
+                          // Any owner can act on anyone; a plain member can
+                          // only act on themselves (leave). The backend is
+                          // the real source of truth on whether an action
+                          // actually succeeds (e.g. the last owner can't
+                          // leave/demote) - these just decide what buttons
+                          // are worth showing at all.
+                          const canManage = isOwner;
+                          const canRemove = isSelf || canManage;
+                          const isLastActiveOwner = m.role === 'owner' && m.status === 'active' && activeOwnerCount <= 1;
                           return (
                             <tr key={m.user_id}>
                               <td>{m.name}{isSelf && <span style={{ color: 'var(--ink-soft)' }}> (you)</span>}</td>
@@ -229,11 +287,19 @@ export default function Profiles() {
                               <td className="mono">{m.role}</td>
                               <td>{m.status === 'pending' ? <span className="tag recurring">Invited</span> : <span className="tag">Active</span>}</td>
                               <td>
-                                {canRemove && (
-                                  <button className="btn btn-danger btn-sm" onClick={() => handleRemoveMember(p.id, m.user_id, isSelf)}>
-                                    {isSelf ? 'Leave' : 'Remove'}
-                                  </button>
-                                )}
+                                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                  {canManage && m.role === 'member' && m.status === 'active' && (
+                                    <button className="btn btn-secondary btn-sm" onClick={() => handlePromote(p.id, m.user_id)}>Promote</button>
+                                  )}
+                                  {canManage && m.role === 'owner' && !isLastActiveOwner && (
+                                    <button className="btn btn-secondary btn-sm" onClick={() => handleDemote(p.id, m.user_id)}>Demote</button>
+                                  )}
+                                  {canRemove && (
+                                    <button className="btn btn-danger btn-sm" onClick={() => handleRemoveMember(p.id, m.user_id, isSelf)}>
+                                      {isSelf ? 'Leave' : 'Remove'}
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -261,6 +327,7 @@ export default function Profiles() {
                     {isOwner && (
                       <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8 }}>
                         They need an existing account with that email — there's no email notification sent, so let them know directly to check their Profiles page.
+                        A profile can have more than one owner — promote a member any time you want to share management, not just usage.
                       </p>
                     )}
                   </>

@@ -1,6 +1,8 @@
-export function formatMoney(amount, { signed = false } = {}) {
+export function formatMoney(amount, { signed = false, currency = 'USD' } = {}) {
   const sign = signed && amount > 0 ? '+' : '';
-  return sign + amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  // Intl handles each currency's correct number of decimal places on its
+  // own (e.g. 0 for JPY, 2 for USD/EUR) - no special-casing needed here.
+  return sign + amount.toLocaleString('en-US', { style: 'currency', currency });
 }
 
 export function formatDate(iso) {

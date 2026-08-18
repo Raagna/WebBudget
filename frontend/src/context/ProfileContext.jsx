@@ -44,14 +44,19 @@ export function ProfileProvider({ children }) {
     localStorage.setItem('finance_active_profile', String(id));
   }, []);
 
-  const createProfile = useCallback(async (name) => {
-    const { data } = await client.post('/profiles', { name });
+  const createProfile = useCallback(async (name, currency) => {
+    const { data } = await client.post('/profiles', { name, currency });
     await refresh();
     switchProfile(data.id);
   }, [refresh, switchProfile]);
 
   const renameProfile = useCallback(async (id, name) => {
     await client.put(`/profiles/${id}`, { name });
+    await refresh();
+  }, [refresh]);
+
+  const updateProfileCurrency = useCallback(async (id, currency) => {
+    await client.put(`/profiles/${id}`, { currency });
     await refresh();
   }, [refresh]);
 
@@ -73,7 +78,18 @@ export function ProfileProvider({ children }) {
 
   const removeMember = useCallback(async (profileId, userId) => {
     await client.delete(`/profiles/${profileId}/members/${userId}`);
-    // Removing yourself (leaving) changes which profiles you can see.
+    // Removing yourself (leaving), or changing an owner's status, changes
+    // which profiles you can see / what role you have.
+    await refresh();
+  }, [refresh]);
+
+  const promoteMember = useCallback(async (profileId, userId) => {
+    await client.post(`/profiles/${profileId}/members/${userId}/promote`);
+    await refresh();
+  }, [refresh]);
+
+  const demoteMember = useCallback(async (profileId, userId) => {
+    await client.post(`/profiles/${profileId}/members/${userId}/demote`);
     await refresh();
   }, [refresh]);
 
@@ -98,8 +114,9 @@ export function ProfileProvider({ children }) {
     <ProfileContext.Provider
       value={{
         profiles, activeProfileId, activeProfile, loading, pendingInviteCount,
-        switchProfile, createProfile, renameProfile, deleteProfile,
-        inviteMember, getMembers, removeMember, getInvites, acceptInvite, declineInvite,
+        switchProfile, createProfile, renameProfile, updateProfileCurrency, deleteProfile,
+        inviteMember, getMembers, removeMember, promoteMember, demoteMember,
+        getInvites, acceptInvite, declineInvite,
         refresh,
       }}
     >

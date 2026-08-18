@@ -63,7 +63,7 @@ Layers are kept separate on purpose:
 
 ```
 users              id, name, email (unique), password_hash, created_at
-profiles           id, user_id, name, created_at
+profiles           id, user_id, name, currency, created_at
 profile_members    profile_id, user_id, role (owner/member), status (active/pending), invited_by
 categories         id, user_id (NULL = global default), name, type, icon, is_default
 hidden_categories  user_id, category_id  (per-user hide of a default category)
@@ -75,7 +75,8 @@ bills              id, user_id, category_id, name, amount_cents, due_on,
                    is_paid, is_recurring         (API only, not in the UI)
 ```
 
-Full DDL: `backend/db/migrations/001_initial.sql` plus `002_household_members.sql`
+Full DDL: `backend/db/migrations/001_initial.sql`, `002_household_members.sql`,
+and `003_profile_currency.sql`
 (see "Migrations & upgrading" below for how later changes are structured).
 Notes:
 - Amounts are stored as **integer cents**, never floats, to avoid rounding
@@ -87,15 +88,28 @@ Notes:
   dashboard, transaction list, and reports to that profile's data.
   Categories are *not* profile-scoped — a user manages one category list
   shared across all of their profiles.
+- **Currency is set per profile** (`profiles.currency`, a 3-letter ISO code,
+  defaults to `USD`). All of a profile's transactions are denominated in
+  that one currency — there is deliberately **no cross-currency conversion
+  or aggregation**; a "Household" profile in EUR and a "Personal" profile
+  in USD are just two entirely separate ledgers, never combined into one
+  number. `amount_cents` was already a currency-agnostic fixed-point value
+  (major unit × 100) before this existed, so no other schema or storage
+  change was needed — currency is purely what the formatting layer treats
+  that number as meaning.
 - **Shared households**: `profile_members` is what actually grants access
   to a profile, not `profiles.user_id` (which just records who originally
-  created it). A row's `role` is `owner` (can rename/delete the profile and
-  manage membership) or `member` (can view and add/edit/delete
-  transactions, but not manage who else is in it). A row's `status` is
-  `pending` (invited, not yet accepted — grants no access) or `active`
-  (can actually use the profile). Nobody is added to a shared budget
-  without accepting an invite first. Every route that touches a profile's
-  data — transactions, bulk operations, dashboard, reports — checks
+  created it). A row's `role` is `owner` (can rename/delete the profile,
+  change its currency, manage membership, and promote/demote other
+  owners) or `member` (can view and add/edit/delete transactions, but not
+  manage who else is in it). **A profile can have more than one active
+  owner** — promoting a member to co-owner is an owner-only action; the
+  app only blocks removing/demoting the *last* remaining active owner, so
+  a profile is never left ownerless. A row's `status` is `pending`
+  (invited, not yet accepted — grants no access) or `active` (can actually
+  use the profile). Nobody is added to a shared budget without accepting
+  an invite first. Every route that touches a profile's data —
+  transactions, bulk operations, dashboard, reports — checks
   `profile_members` with `status = 'active'`, not who created the
   transaction or the profile.
 - Categories are global (`user_id IS NULL`) for the 12 predefined ones, or
@@ -138,17 +152,21 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 | DELETE | `/api/categories/:id` | Delete own custom category, or hide a default one for this user |
 | GET | `/api/categories/hidden` | List default categories this user has hidden |
 | POST | `/api/categories/:id/restore` | Un-hide a previously hidden default category |
-| GET | `/api/profiles` | List profiles this user is an active member of, with their `role` |
-| POST | `/api/profiles` | Create a profile `{ name }` — creator becomes its owner |
-| PUT | `/api/profiles/:id` | Rename a profile (owner only) |
-| DELETE | `/api/profiles/:id` | Delete a profile, its transactions, and all memberships (owner only, blocked if it's the user's last remaining profile) |
+| GET | `/api/profiles` | List profiles this user is an active member of, with their `role` and `currency` |
+| POST | `/api/profiles` | Create a profile `{ name, currency? }` (defaults to `USD`) — creator becomes its owner |
+| PUT | `/api/profiles/:id` | Rename and/or change currency `{ name?, currency? }` (owner only — any owner, not just the creator) |
+| DELETE | `/api/profiles/:id` | Delete a profile, its transactions, and all memberships (any owner, blocked if it's the user's last remaining profile) |
 | GET | `/api/profiles/invites` | Pending invites sent to this user |
 | POST | `/api/profiles/invites/:profileId/accept` | Accept a pending invite |
 | POST | `/api/profiles/invites/:profileId/decline` | Decline a pending invite |
 | GET | `/api/profiles/:id/members` | List a profile's members and their role/status (any active member) |
 | POST | `/api/profiles/:id/members` | Invite by email `{ email }` (owner only) — always returns the same generic response whether or not the email matches an account, to avoid leaking who's registered |
-| DELETE | `/api/profiles/:id/members/:userId` | Remove a member (owner only), or remove yourself to leave (owners can't leave this way — delete the profile instead) |
+| DELETE | `/api/profiles/:id/members/:userId` | Remove another member (owner only), or remove yourself to leave — blocked if you're the profile's only remaining active owner |
+| POST | `/api/profiles/:id/members/:userId/promote` | Promote an active member to co-owner (owner only) — no cap on how many owners a profile can have |
+| POST | `/api/profiles/:id/members/:userId/demote` | Demote a co-owner back to member (owner only) — blocked if they're the last remaining active owner |
 | GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` — shows the whole shared ledger, not just what the requester personally entered |
+| GET | `/api/transactions/export?profileId=&...` | Download every transaction matching the same filters as the list above as a CSV file (no pagination — the full matching set) |
+| POST | `/api/transactions/import` | Import transactions from CSV text: `{ profileId, csv }` — returns `{ imported, errors: [{row, reason}], warnings: [{row, reason}], totalRows }`; an unrecognized category name doesn't fail the row, it imports as Uncategorized with a warning |
 | POST | `/api/transactions` | Create — body includes `profileId` |
 | PUT | `/api/transactions/:id` | Update — any active member of the transaction's profile can edit it, not just whoever created it |
 | DELETE | `/api/transactions/:id` | Delete — same access rule as update |
@@ -209,11 +227,13 @@ frontend/src/
   pages/
     Login.jsx / Register.jsx
     Dashboard.jsx            summaries + charts (scoped to active profile)
-    Transactions.jsx         filterable/sortable ledger with multi-select bulk actions
+    Transactions.jsx         filterable/sortable ledger, multi-select + range select, CSV import/export
     Reports.jsx              longer-range trend charts
-    Profiles.jsx             create/rename/delete profiles, invites, member management
+    Profiles.jsx             create/rename/delete/currency, invites, member management, promote/demote
     Settings.jsx             category management (add/remove/hide/restore), account deletion
-  utils/format.js            money/date formatting helpers
+  utils/
+    format.js                money/date formatting helpers (formatMoney takes a currency code)
+    currencies.js             supported currency list for the dropdown UI (mirrors the backend's list)
   styles.css                  design tokens + all component styles
 ```
 
@@ -240,8 +260,11 @@ which is what was letting a long email push into the button).
   least one profile; deleting a profile deletes its transactions with a
   confirmation first.
 - **Shared households**: invite another account into a profile so more
-  than one person can see and manage the same budget. See "Shared
-  households" below for the full flow.
+  than one person can see and manage the same budget, including sharing
+  ownership itself via promote/demote. See "Shared households" below for
+  the full flow.
+- **Per-profile currency**: each profile is denominated in one currency of
+  your choice (defaults to USD). See "Multi-currency" below.
 - **Summary tiles**: monthly income, expenses, remaining, and largest
   category for the active profile.
 - **Charts**: income vs. expenses line chart (Dashboard, last 9 months),
@@ -251,6 +274,13 @@ which is what was letting a long email push into the button).
   (income/expense — a filter now, not a separate page), category, and date
   range, and sorted by date, amount, description, or type, ascending or
   descending.
+- **CSV import/export**: export every transaction matching your current
+  filters as a CSV file, or import transactions from one (date, type,
+  description, category, amount, recurring, recurring_interval columns —
+  category is matched by name, and an unrecognized name imports the row
+  as Uncategorized with a warning rather than failing it outright). Import
+  reports exactly which rows succeeded, which were skipped and why, and
+  which imported with a caveat.
 - **Multi-select bulk actions**: check multiple transactions in the ledger
   to bulk-delete them or bulk-reassign their category in one action.
   **Shift+click** a checkbox to select every row between it and your last
@@ -289,35 +319,68 @@ you.
   add/edit/delete any transaction in it — including ones the other person
   entered, which is what makes it actually collaborative rather than two
   people each only managing their own rows. A `member` cannot rename or
-  delete the profile, and cannot invite or remove other members.
-- **The `owner`** (whoever created the profile) can rename/delete it and
-  manage membership — invite new members, remove existing ones. An owner
-  can't remove themselves; giving up ownership means deleting the profile
-  entirely, which avoids ever leaving a household with no owner.
-- **Leaving**: any `member` can remove themselves from a shared profile at
-  any time from the Members panel.
-- This was tested end-to-end with two real accounts: one invited, the
-  invitee had no access until accepting, accepting granted it, a
-  transaction added by one account was edited by the other, a `member`
-  account was confirmed unable to invite or remove members (`403`), and
-  the owner was confirmed unable to self-remove (`400`, told to delete the
-  profile instead).
+  delete the profile, change its currency, invite/remove other members,
+  or promote/demote anyone.
+- **Co-ownership**: a profile can have more than one `owner` — from the
+  Members panel, any owner can **promote** an active member to co-owner,
+  or **demote** a co-owner back to member. This is for households where
+  both partners want equal management rights rather than one person being
+  the sole point of control. The only rule the app enforces is that a
+  profile always has at least one active owner: demoting or removing the
+  *last* remaining owner is blocked, but any owner can freely leave, be
+  demoted, or be removed as long as at least one other owner stays active
+  — promote a co-owner first if you want to step back from sole
+  ownership.
+- **Leaving**: any member — owner or not — can remove themselves from a
+  shared profile at any time from the Members panel, unless doing so would
+  leave the profile with zero active owners.
+- This was tested end-to-end with real accounts: one invited, the invitee
+  had no access until accepting, accepting granted it, a transaction added
+  by one account was edited by the other, a `member` account was confirmed
+  unable to invite/remove/promote/demote (`403`), an owner was confirmed
+  able to leave once a co-owner existed, and a sole owner was confirmed
+  unable to demote themselves or leave (`400`, told to promote someone
+  else or delete the profile instead).
+
+## Multi-currency
+
+Each profile is denominated in exactly one currency, chosen when the
+profile is created (defaults to USD) and changeable later by any owner
+from the Profiles page's Edit control. There are ~30 common currencies to
+choose from (`frontend/src/utils/currencies.js`, mirrored server-side in
+`backend/middleware/validate.js`'s `SUPPORTED_CURRENCIES` — keep both in
+sync if you add one).
+
+**What this does and doesn't do:** all of a profile's amounts, totals, and
+charts format using that profile's currency (`Intl.NumberFormat` handles
+each currency's correct symbol and decimal places automatically — no
+special-casing needed for e.g. JPY's zero decimal places). What it does
+**not** do is convert between currencies or combine totals across
+profiles with different currencies — a EUR "Household" and a USD
+"Personal" are simply two separate ledgers, each internally consistent,
+never added together into one number. That's a deliberate scope
+boundary, not a missing feature: real currency conversion needs live
+exchange rates and a decision about which historical rate applies to a
+past transaction, which is a meaningfully bigger feature than "pick a
+currency for a profile."
 
 ## Database seed data
 
 `backend/seed.js` creates one demo account
 (`demo@example.com` / `DemoPass123!`) with **two profiles** — "Personal"
-and "Household" — and ~9 months of clearly fictional transaction history
-split realistically between them (rent, shared utilities, and groceries in
-Household; subscriptions, entertainment, and the user's own salary in
-Personal, with random variance so months aren't identical). It also seeds
-a second account, `partner@example.com` / `DemoPass123!`, already an
-**active member** (not owner) of the "Household" profile — log in as
-either account to see the shared budget, or as the partner account to see
-what a `member`'s view and permissions look like without needing to run
-through the invite flow yourself first. It also seeds a few sample
-subscriptions and bills directly in the database for completeness, even
-though those aren't currently linked from the UI.
+(USD) and "Household" (**EUR**, deliberately different, so the currency
+formatting is visibly exercised without any extra setup) — and ~9 months
+of clearly fictional transaction history split realistically between them
+(rent, shared utilities, and groceries in Household; subscriptions,
+entertainment, and the user's own salary in Personal, with random
+variance so months aren't identical). It also seeds a second account,
+`partner@example.com` / `DemoPass123!`, already an **active member** (not
+owner) of the "Household" profile — log in as either account to see the
+shared budget, or as the partner account to see what a `member`'s view
+and permissions look like without needing to run through the invite flow
+yourself first. It also seeds a few sample subscriptions and bills
+directly in the database for completeness, even though those aren't
+currently linked from the UI.
 
 ## Project file structure
 
@@ -326,9 +389,10 @@ finance-app/
   .github/workflows/
     deploy-pages.yml  builds frontend/ and publishes it to GitHub Pages on push to main
   backend/
-    db/                migrations/(001_initial.sql, 002_household_members.sql), migrate.js, index.js (pool + migration runner)
+    db/                migrations/(001_initial.sql, 002_household_members.sql, 003_profile_currency.sql), migrate.js, index.js (pool + migration runner)
     middleware/        auth.js, validate.js, asyncHandler.js
     routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
+    utils/csv.js       dependency-free CSV parse/generate for import/export
     server.js
     seed.js
     package.json
@@ -468,6 +532,25 @@ Manual flows to verify (all confirmed working during development):
     should be blocked with a message naming the profile. Remove that
     member (or have a second test account leave), then delete again —
     should succeed and log you out; confirm the old login now fails.
+16. **Co-ownership**: from a profile's Members panel (as owner), promote a
+    member to co-owner and confirm their role updates. As the *original*
+    owner, leave the profile (now safe since a co-owner remains) and
+    confirm the profile disappears from your list but the co-owner still
+    has full access. As the sole remaining owner, try to demote yourself
+    or leave — both should be blocked with a clear message.
+17. **Currency**: create a profile with a non-USD currency, add a
+    transaction, and confirm the dashboard, transaction list, and chart
+    axes all show the correct currency symbol and formatting (e.g. `¥` for
+    JPY with no decimal places, `€1,234.56` for EUR). Switch between a USD
+    and non-USD profile and confirm the numbers never mix — no conversion,
+    no combined total.
+18. **CSV export/import**: export a profile's transactions, open the file,
+    confirm the data matches what's in the app. Re-import that same file
+    into the same or a different profile and confirm it comes back
+    correctly (round-trip). Then import a deliberately malformed file (bad
+    date, non-numeric amount, unrecognized category name) and confirm the
+    response clearly reports which rows failed and why, which imported
+    with a warning, and that only the genuinely valid rows actually landed.
 
 For automated backend testing, `curl` or a tool like Postman can exercise
 the endpoints in the API table above — every route returns JSON and
@@ -650,15 +733,9 @@ to keep growing this beyond a transaction tracker.
   household only surfaces as a badge/card the next time they log in —
   there's no actual email sent. Adding one (e.g. via Resend, Postmark, or
   SES) would make invites discoverable without asking the person to check.
-- **Multiple owners per profile**: a shared household currently has exactly
-  one owner. Letting an owner promote a member to co-owner would help for
-  households where both partners want equal management rights rather than
-  one person being the sole point of control.
 - Auto-generate transactions from active subscriptions/recurring bills on
   their due dates (currently they're tracked but not auto-posted).
-- CSV import/export.
 - Budgets per category with over-budget alerts, including per-profile budgets.
-- Multi-currency support (currently USD-only, cents-based).
 - Automated test suite (Jest/Supertest for the API, Playwright for the UI) —
   this build was verified manually and via `curl` smoke tests, but doesn't
   ship with a test runner.

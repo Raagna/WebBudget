@@ -39,12 +39,15 @@ async function run() {
     const userId = user.id;
 
     const personalProfile = await tx.queryOne(
-      'INSERT INTO profiles (user_id, name) VALUES (?, ?) RETURNING id',
-      [userId, 'Personal']
+      'INSERT INTO profiles (user_id, name, currency) VALUES (?, ?, ?) RETURNING id',
+      [userId, 'Personal', 'USD']
     );
+    // Household in EUR - a small, deliberate demonstration that different
+    // profiles can be denominated in different currencies with no
+    // conversion between them (see the multi-currency note in the README).
     const householdProfile = await tx.queryOne(
-      'INSERT INTO profiles (user_id, name) VALUES (?, ?) RETURNING id',
-      [userId, 'Household']
+      'INSERT INTO profiles (user_id, name, currency) VALUES (?, ?, ?) RETURNING id',
+      [userId, 'Household', 'EUR']
     );
     const personalProfileId = personalProfile.id;
     const householdProfileId = householdProfile.id;

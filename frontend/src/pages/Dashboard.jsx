@@ -7,6 +7,7 @@ import client from '../api/client';
 import StatCard from '../components/StatCard.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate } from '../utils/format.js';
+import { CURRENCIES } from '../utils/currencies.js';
 
 const PIE_COLORS = ['#2f5d50', '#b8933a', '#a6432d', '#6b8f87', '#c9a876', '#7a3f30', '#4a746a', '#8f6b2e'];
 
@@ -44,6 +45,8 @@ export default function Dashboard() {
   if (error) return <div className="empty-state">{error}</div>;
 
   const net = summary.net;
+  const currency = activeProfile?.currency || 'USD';
+  const currencySymbol = CURRENCIES.find((c) => c.code === currency)?.symbol || '$';
 
   return (
     <div>
@@ -55,11 +58,11 @@ export default function Dashboard() {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Monthly Income" value={formatMoney(summary.income)} tone="positive" />
-        <StatCard label="Monthly Expenses" value={formatMoney(summary.expenses)} tone="negative" />
+        <StatCard label="Monthly Income" value={formatMoney(summary.income, { currency })} tone="positive" />
+        <StatCard label="Monthly Expenses" value={formatMoney(summary.expenses, { currency })} tone="negative" />
         <StatCard
           label="Remaining"
-          value={formatMoney(net)}
+          value={formatMoney(net, { currency })}
           tone={net >= 0 ? 'positive' : 'negative'}
           hint={net >= 0 ? 'On track this month' : 'Spending exceeds income'}
         />
@@ -74,8 +77,8 @@ export default function Dashboard() {
               <CartesianGrid stroke="#dcd6c8" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={{ stroke: '#dcd6c8' }} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} width={60}
-                     tickFormatter={(v) => `$${v}`} />
-              <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
+                     tickFormatter={(v) => `${currencySymbol}${v}`} />
+              <Tooltip formatter={(v) => formatMoney(v, { currency })} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="income" name="Income" stroke="#2f5d50" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#a6432d" strokeWidth={2} dot={{ r: 3 }} />
@@ -102,7 +105,7 @@ export default function Dashboard() {
                     <Cell key={entry.category} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
+                <Tooltip formatter={(v) => formatMoney(v, { currency })} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} layout="vertical" verticalAlign="middle" align="right" />
               </PieChart>
             </ResponsiveContainer>
@@ -116,8 +119,8 @@ export default function Dashboard() {
           <BarChart data={summary.spendingByCategory} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
             <CartesianGrid stroke="#dcd6c8" vertical={false} />
             <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={{ stroke: '#dcd6c8' }} tickLine={false} interval={0} angle={-20} textAnchor="end" height={60} />
-            <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-            <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
+            <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`} />
+            <Tooltip formatter={(v) => formatMoney(v, { currency })} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
             <Bar dataKey="total" fill="#2f5d50" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -141,7 +144,7 @@ export default function Dashboard() {
                   <td className="mono">{formatDate(t.date)}</td>
                   <td>{t.description}</td>
                   <td><span className="tag">{t.category}</span></td>
-                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)}</td>
+                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
                 </tr>
               ))}
             </tbody>

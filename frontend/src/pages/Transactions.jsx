@@ -5,7 +5,8 @@ import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate } from '../utils/format.js';
 
 export default function Transactions() {
-  const { activeProfileId } = useProfiles();
+  const { activeProfileId, activeProfile } = useProfiles();
+  const currency = activeProfile?.currency || 'USD';
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [total, setTotal] = useState(0);
@@ -15,6 +16,10 @@ export default function Transactions() {
   const [selected, setSelected] = useState(() => new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const fileInputRef = useRef(null);
   // Remembers the row index of the last checkbox click, so a shift+click
   // elsewhere in the list knows what range to select. Doesn't need to
   // trigger a re-render on its own, hence a ref rather than state.
@@ -44,6 +49,56 @@ export default function Transactions() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Export respects whatever filters are currently applied (type,
+  // category, date range) - clear filters first to export everything, or
+  // filter down to export just a subset. Needs to go through axios (not a
+  // plain link) since the endpoint requires the auth header; a blob
+  // response plus a throwaway anchor is the standard way to trigger a
+  // file download from an authenticated API call.
+  async function handleExport() {
+    setExportBusy(true);
+    try {
+      const params = { profileId: activeProfileId };
+      if (filters.type) params.type = filters.type;
+      if (filters.categoryId) params.categoryId = filters.categoryId;
+      if (filters.from) params.from = filters.from;
+      if (filters.to) params.to = filters.to;
+      const res = await client.get('/transactions/export', { params, responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  function triggerImport() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setImportBusy(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const { data } = await client.post('/transactions/import', { profileId: activeProfileId, csv: text });
+      setImportResult(data);
+      load();
+    } catch (err) {
+      setImportResult({ error: err.response?.data?.error || 'Could not import this file.' });
+    } finally {
+      setImportBusy(false);
+    }
+  }
 
   async function handleAdd(payload) {
     await client.post('/transactions', { ...payload, profileId: activeProfileId });
@@ -139,10 +194,52 @@ export default function Transactions() {
           <h1>Transactions</h1>
           <div className="subtitle">{total} record{total === 1 ? '' : 's'}</div>
         </div>
-        {!showForm && !editing && (
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>Add transaction</button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={handleFileSelected}
+          />
+          <button className="btn btn-secondary" onClick={triggerImport} disabled={importBusy}>
+            {importBusy ? 'Importing…' : 'Import CSV'}
+          </button>
+          <button className="btn btn-secondary" onClick={handleExport} disabled={exportBusy || total === 0}>
+            {exportBusy ? 'Exporting…' : 'Export CSV'}
+          </button>
+          {!showForm && !editing && (
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>Add transaction</button>
+          )}
+        </div>
       </div>
+
+      {importResult && (
+        <div className="card" style={{ marginBottom: 20, borderColor: importResult.error ? 'var(--brick)' : 'var(--line)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              {importResult.error ? (
+                <p style={{ color: 'var(--brick)', margin: 0 }}>{importResult.error}</p>
+              ) : (
+                <>
+                  <p style={{ margin: 0 }}>
+                    Imported <strong>{importResult.imported}</strong> of {importResult.totalRows} row{importResult.totalRows === 1 ? '' : 's'}.
+                    {importResult.warnings.length > 0 && ` ${importResult.warnings.length} warning${importResult.warnings.length === 1 ? '' : 's'}.`}
+                    {importResult.errors.length > 0 && ` ${importResult.errors.length} skipped.`}
+                  </p>
+                  {(importResult.warnings.length > 0 || importResult.errors.length > 0) && (
+                    <ul style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8, paddingLeft: 18 }}>
+                      {importResult.errors.map((e, i) => <li key={`e${i}`}>Row {e.row}: {e.reason}</li>)}
+                      {importResult.warnings.map((w, i) => <li key={`w${i}`}>Row {w.row}: {w.reason}</li>)}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={() => setImportResult(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <TransactionForm categories={categories} onSubmit={handleAdd} onCancel={() => setShowForm(false)} />
@@ -256,7 +353,7 @@ export default function Transactions() {
                   <td>{t.description}</td>
                   <td>{t.categoryName && <span className="tag">{t.categoryName}</span>}</td>
                   <td>{t.isRecurring && <span className="tag recurring">{t.recurringInterval}</span>}</td>
-                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)}</td>
+                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(t); setShowForm(false); }}>Edit</button>

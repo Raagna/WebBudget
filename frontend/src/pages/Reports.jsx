@@ -3,6 +3,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import client from '../api/client';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney } from '../utils/format.js';
+import { CURRENCIES } from '../utils/currencies.js';
 
 export default function Reports() {
   const { activeProfileId, activeProfile } = useProfiles();
@@ -23,6 +24,8 @@ export default function Reports() {
   const totalIncome = trends.reduce((s, t) => s + (t.income || 0), 0);
   const totalExpenses = trends.reduce((s, t) => s + (t.expenses || 0), 0);
   const avgMonthlyNet = trends.length ? (totalIncome - totalExpenses) / trends.length : 0;
+  const currency = activeProfile?.currency || 'USD';
+  const currencySymbol = CURRENCIES.find((c) => c.code === currency)?.symbol || '$';
 
   return (
     <div>
@@ -42,9 +45,9 @@ export default function Reports() {
       </div>
 
       <div className="stat-grid">
-        <div className="card stat-card"><div className="label">Total Income</div><div className="value positive">{formatMoney(totalIncome)}</div></div>
-        <div className="card stat-card"><div className="label">Total Expenses</div><div className="value negative">{formatMoney(totalExpenses)}</div></div>
-        <div className="card stat-card"><div className="label">Avg. Monthly Net</div><div className={`value ${avgMonthlyNet >= 0 ? 'positive' : 'negative'}`}>{formatMoney(avgMonthlyNet)}</div></div>
+        <div className="card stat-card"><div className="label">Total Income</div><div className="value positive">{formatMoney(totalIncome, { currency })}</div></div>
+        <div className="card stat-card"><div className="label">Total Expenses</div><div className="value negative">{formatMoney(totalExpenses, { currency })}</div></div>
+        <div className="card stat-card"><div className="label">Avg. Monthly Net</div><div className={`value ${avgMonthlyNet >= 0 ? 'positive' : 'negative'}`}>{formatMoney(avgMonthlyNet, { currency })}</div></div>
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
@@ -54,8 +57,8 @@ export default function Reports() {
             <AreaChart data={trends} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
               <CartesianGrid stroke="#dcd6c8" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={{ stroke: '#dcd6c8' }} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-              <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`} />
+              <Tooltip formatter={(v) => formatMoney(v, { currency })} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#a6432d" fill="#f3e4de" strokeWidth={2} />
               <Area type="monotone" dataKey="income" name="Income" stroke="#2f5d50" fill="#e4ede9" strokeWidth={2} />
@@ -71,8 +74,8 @@ export default function Reports() {
                     margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
             <CartesianGrid stroke="#dcd6c8" vertical={false} />
             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={{ stroke: '#dcd6c8' }} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-            <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
+            <YAxis tick={{ fontSize: 11, fill: '#5b6663' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`} />
+            <Tooltip formatter={(v) => formatMoney(v, { currency })} contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dcd6c8' }} />
             <Bar dataKey="net" radius={[3, 3, 0, 0]} fill="#2f5d50" />
           </BarChart>
         </ResponsiveContainer>

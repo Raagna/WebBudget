@@ -18,6 +18,21 @@ function isValidDate(v) {
   return !Number.isNaN(d.getTime());
 }
 
+// Curated rather than exhaustive - covers the currencies a personal
+// finance app's users are realistically going to want. Keep this in sync
+// with frontend/src/utils/currencies.js, which mirrors it for the
+// dropdown UI (the frontend can't import backend code directly, so the
+// list is intentionally duplicated rather than shared over the network).
+const SUPPORTED_CURRENCIES = new Set([
+  'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'MXN',
+  'BRL', 'ZAR', 'SGD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'KRW', 'HKD',
+  'AED', 'ILS', 'TRY', 'THB', 'IDR', 'PHP', 'VND', 'RUB', 'CZK', 'HUF',
+]);
+
+function isValidCurrency(v) {
+  return typeof v === 'string' && SUPPORTED_CURRENCIES.has(v.toUpperCase());
+}
+
 function isPositiveAmount(v) {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1_000_000_000;
 }
@@ -61,6 +76,7 @@ module.exports = {
   isNonEmptyString,
   isValidEmail,
   isValidDate,
+  isValidCurrency,
   isPositiveAmount,
   isIdArray,
   toCents,
