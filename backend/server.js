@@ -23,7 +23,12 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // route's own larger parser ever ran.
 app.use('/api/scan', scanRoutes);
 
-app.use(express.json({ limit: '100kb' }));
+// The CSV import route parses its own body with a 5mb limit; the global
+// 100kb parser must skip it or it rejects larger files before that runs.
+const jsonParser = express.json({ limit: '100kb' });
+app.use((req, res, next) =>
+  req.path === '/api/transactions/import' ? next() : jsonParser(req, res, next)
+);
 
 // Basic brute-force protection on auth endpoints.
 const authLimiter = rateLimit({
@@ -46,6 +51,9 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Central error handler: never leak stack traces or internals to clients.
 app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'File too large' });
+  }
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 });
