@@ -1,62 +1,6 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-
 const { runMigrations } = require('./db');
-const authRoutes = require('./routes/auth');
-const categoryRoutes = require('./routes/categories');
-const profileRoutes = require('./routes/profiles');
-const transactionRoutes = require('./routes/transactions');
-const subscriptionRoutes = require('./routes/subscriptions');
-const billRoutes = require('./routes/bills');
-const dashboardRoutes = require('./routes/dashboard');
-const scanRoutes = require('./routes/scan');
-
-const app = express();
-
-app.disable('x-powered-by'); // don't advertise the stack in response headers
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
-
-// Mounted BEFORE the global JSON parser: receipt photos are far bigger than
-// its 100kb limit, and that parser would reject them with a 413 before the
-// route's own larger parser ever ran.
-app.use('/api/scan', scanRoutes);
-
-// The CSV import route parses its own body with a 5mb limit; the global
-// 100kb parser must skip it or it rejects larger files before that runs.
-const jsonParser = express.json({ limit: '100kb' });
-app.use((req, res, next) =>
-  req.path === '/api/transactions/import' ? next() : jsonParser(req, res, next)
-);
-
-// Basic brute-force protection on auth endpoints.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts, please try again later' },
-});
-app.use('/api/auth', authLimiter, authRoutes);
-
-app.use('/api/categories', categoryRoutes);
-app.use('/api/profiles', profileRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/bills', billRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-
-app.get('/api/health', (req, res) => res.json({ ok: true }));
-
-// Central error handler: never leak stack traces or internals to clients.
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'File too large' });
-  }
-  console.error(err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+const app = require('./app');
 
 const PORT = process.env.PORT || 4000;
 
