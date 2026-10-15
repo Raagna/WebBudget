@@ -269,6 +269,16 @@ table.ledger input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer
 .bulk-edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .bulk-edit-row select { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-raised); font-size: 13px; }
 
+/* ---------- Bills ---------- */
+
+/* Lets a wide ledger scroll inside its card on a phone instead of
+   pushing the whole page sideways. */
+.table-scroll { overflow-x: auto; }
+table.ledger td.bill-status { white-space: nowrap; }
+.due { font-size: 12px; color: var(--ink-soft); }
+.due.overdue { color: var(--brick); font-weight: 600; }
+table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background: var(--pine-soft); }
+
 .select-hint {
   display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
   font-size: 12px; color: var(--ink-soft);

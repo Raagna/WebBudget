@@ -11,6 +11,20 @@ export function formatDate(iso) {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Today's date in the user's own timezone as YYYY-MM-DD. toISOString()
+// would give the UTC date, which is already "tomorrow" on a US evening -
+// enough to show a bill due today as overdue.
+export function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Whole days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when
+// `toIso` is earlier.
+export function daysBetween(fromIso, toIso) {
+  return Math.round((Date.parse(toIso + 'T00:00:00Z') - Date.parse(fromIso + 'T00:00:00Z')) / 86_400_000);
+}
+
 export function currentYearMonth() {
   return new Date().toISOString().slice(0, 7);
 }
