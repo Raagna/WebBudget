@@ -1,13 +1,26 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import client from '../api/client';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import client, { SESSION_EXPIRED_EVENT } from '../api/client';
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
+function readStoredUser() {
+  try {
     const raw = localStorage.getItem('finance_user');
     return raw ? JSON.parse(raw) : null;
-  });
+  } catch {
+    return null; // corrupted value: treat as logged out rather than crash on load
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(readStoredUser);
+
+  // The API client fires this on any 401 (expired or invalid token).
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   const persist = (token, user) => {
     localStorage.setItem('finance_token', token);

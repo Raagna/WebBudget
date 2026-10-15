@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import client from '../api/client';
 import TransactionForm from '../components/TransactionForm.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
-import { formatMoney, formatDate } from '../utils/format.js';
+import { formatMoney, formatDate, localToday } from '../utils/format.js';
 
 export default function Transactions() {
   const { activeProfileId, activeProfile } = useProfiles();
@@ -68,7 +68,7 @@ export default function Transactions() {
       const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `transactions-${localToday()}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

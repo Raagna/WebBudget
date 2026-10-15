@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from 'recharts';
 import client from '../api/client';
 import { useProfiles } from '../context/ProfileContext.jsx';
-import { formatMoney } from '../utils/format.js';
+import { formatMoney, localToday } from '../utils/format.js';
 import { CURRENCIES } from '../utils/currencies.js';
 
 export default function Reports() {
@@ -15,7 +15,7 @@ export default function Reports() {
     if (!activeProfileId) return;
     let cancelled = false;
     setLoading(true);
-    client.get('/dashboard/trends', { params: { profileId: activeProfileId, months } }).then((res) => {
+    client.get('/dashboard/trends', { params: { profileId: activeProfileId, months, today: localToday() } }).then((res) => {
       if (!cancelled) { setTrends(res.data.trends); setLoading(false); }
     });
     return () => { cancelled = true; };

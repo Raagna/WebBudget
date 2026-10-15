@@ -1,12 +1,19 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query, queryOne, run, withTransaction } = require('../db');
+const { queryOne, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth, signToken } = require('../middleware/auth');
 const { isNonEmptyString, isValidEmail, validateBody } = require('../middleware/validate');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
+
+// Compared against when a login names an email with no account, so that
+// path costs the same bcrypt work as a wrong password. It has to be a
+// real, well-formed hash at the same cost: bcryptjs returns false
+// instantly for a malformed one, which made unknown emails answer
+// ~250ms faster and revealed which emails are registered.
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-real-password', SALT_ROUNDS);
 
 router.post(
   '/register',
@@ -69,7 +76,7 @@ router.post(
     const user = await queryOne('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
     // Always run bcrypt.compare, even on a missing user, against a dummy
     // hash so response timing doesn't leak whether the email is registered.
-    const hashToCheck = user ? user.password_hash : '$2a$12$invalidsaltinvalidsaltinvalidsalu';
+    const hashToCheck = user ? user.password_hash : DUMMY_HASH;
     const valid = bcrypt.compareSync(password, hashToCheck);
 
     if (!user || !valid) {
@@ -104,17 +111,20 @@ router.post(
 
 // Deleting an account requires the current password, same as any other
 // destructive account action - a stolen/left-open session alone isn't
-// enough. Deleting a user cascades to everything they own directly
-// (profiles, custom categories, transactions, subscriptions, bills - see
-// the ON DELETE CASCADE foreign keys in the migrations), which is exactly
-// right for profiles only they use. But a profile they OWN that has other
-// *active* members is a shared household - cascading it away would delete
-// that household and its transaction history out from under everyone
-// else in it without any warning or consent from them. So this blocks
-// deletion if the user is the sole owner of any profile with other active
-// members, and tells them exactly which profile(s) to deal with first
-// (remove the other members, or hand the household off some other way -
-// there's no ownership-transfer feature yet, tracked in the README).
+// enough.
+//
+// What gets deleted is decided by who else uses each profile, never by
+// who originally created it:
+// - A profile nobody else is an active member of is deleted along with
+//   its transactions (including one the user created and later left).
+// - A shared profile survives, with every transaction in it - including
+//   the ones this user entered (migration 005 turned the creator/author
+//   columns into ON DELETE SET NULL history).
+// - Deletion is refused while the user is the ONLY owner of a shared
+//   profile, since it would be left with members but nobody able to
+//   manage it. They promote someone to owner first (or remove the others).
+// Their custom categories, bills and subscriptions are personal and go
+// with the account.
 router.delete(
   '/account',
   requireAuth,
@@ -125,25 +135,47 @@ router.delete(
 
     const valid = bcrypt.compareSync(req.body.password, user.password_hash);
     if (!valid) {
-      return res.status(401).json({ error: 'Incorrect password' });
+      // 403, not 401: the session is fine, only the confirmation password
+      // is wrong. The frontend treats any 401 as "session expired" and
+      // logs the user out, which is the wrong response to a typo here.
+      return res.status(403).json({ error: 'Incorrect password' });
     }
 
-    const blockedProfiles = await query(
-      `SELECT p.name,
-              (SELECT COUNT(*)::int FROM profile_members m WHERE m.profile_id = p.id AND m.status = 'active') AS member_count
-       FROM profiles p
-       JOIN profile_members pm ON pm.profile_id = p.id AND pm.user_id = ? AND pm.role = 'owner' AND pm.status = 'active'
-       WHERE (SELECT COUNT(*)::int FROM profile_members m WHERE m.profile_id = p.id AND m.status = 'active') > 1`,
-      [req.userId]
-    );
-    if (blockedProfiles.length > 0) {
-      const names = blockedProfiles.map((p) => `"${p.name}" (${p.member_count} members)`).join(', ');
-      return res.status(400).json({
-        error: `You own shared profiles with other active members: ${names}. Remove the other members (or have them leave) before deleting your account.`,
-      });
-    }
+    const result = await withTransaction(async (tx) => {
+      const blockedProfiles = await tx.query(
+        `SELECT p.name,
+                (SELECT COUNT(*)::int FROM profile_members m WHERE m.profile_id = p.id AND m.status = 'active') AS member_count
+         FROM profiles p
+         JOIN profile_members pm ON pm.profile_id = p.id AND pm.user_id = ? AND pm.role = 'owner' AND pm.status = 'active'
+         WHERE EXISTS (SELECT 1 FROM profile_members m
+                       WHERE m.profile_id = p.id AND m.user_id <> pm.user_id AND m.status = 'active')
+           AND NOT EXISTS (SELECT 1 FROM profile_members m
+                           WHERE m.profile_id = p.id AND m.user_id <> pm.user_id
+                             AND m.status = 'active' AND m.role = 'owner')`,
+        [req.userId]
+      );
+      if (blockedProfiles.length > 0) {
+        const names = blockedProfiles.map((p) => `"${p.name}" (${p.member_count} members)`).join(', ');
+        return {
+          error: `You are the only owner of shared profiles: ${names}. Promote another member to owner (or remove the other members) before deleting your account.`,
+        };
+      }
 
-    await run('DELETE FROM users WHERE id = ?', [req.userId]);
+      // Profiles this user created or belongs to that nobody else is an
+      // active member of. Shared ones are left alone.
+      await tx.run(
+        `DELETE FROM profiles p
+         WHERE (p.user_id = ? OR EXISTS (SELECT 1 FROM profile_members pm
+                                         WHERE pm.profile_id = p.id AND pm.user_id = ? AND pm.status = 'active'))
+           AND NOT EXISTS (SELECT 1 FROM profile_members m
+                           WHERE m.profile_id = p.id AND m.user_id <> ? AND m.status = 'active')`,
+        [req.userId, req.userId, req.userId]
+      );
+      await tx.run('DELETE FROM users WHERE id = ?', [req.userId]);
+      return { error: null };
+    });
+
+    if (result.error) return res.status(400).json({ error: result.error });
     res.status(204).end();
   })
 );

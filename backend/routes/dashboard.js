@@ -2,7 +2,7 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
-const { fromCents } = require('../middleware/validate');
+const { fromCents, isValidDate } = require('../middleware/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -36,13 +36,28 @@ async function requireOwnedProfile(req, res) {
   return profileId;
 }
 
-// GET /api/dashboard/summary?profileId=&month=YYYY-MM  (month defaults to current)
+// "Today" in the USER's timezone, which the server can't know: the
+// browser sends it as ?today=YYYY-MM-DD. Without it, the server's UTC
+// date is used, which is already tomorrow for North America in the
+// evening - so the dashboard could show next month, or count a
+// transaction dated tomorrow as already spent.
+function userToday(req) {
+  return isValidDate(req.query.today) ? req.query.today : new Date().toISOString().slice(0, 10);
+}
+
+// GET /api/dashboard/summary?profileId=&today=YYYY-MM-DD&month=YYYY-MM
+// month defaults to the month of `today`. Totals, categories and recent
+// transactions only count what has happened up to `today`: a transaction
+// entered with a future date (rent due next week, a scheduled transfer)
+// isn't spending yet, and counting it made "Remaining" misleadingly low.
 router.get('/summary', asyncHandler(async (req, res) => {
   const profileId = await requireOwnedProfile(req, res);
   if (profileId === null) return;
 
-  const month = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
-  const { start, end } = monthBounds(month);
+  const today = userToday(req);
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : today.slice(0, 7);
+  const { start, end: monthEnd } = monthBounds(month);
+  const end = monthEnd < today ? monthEnd : today;
 
   const totals = await query(
     `SELECT type, COALESCE(SUM(amount_cents), 0)::bigint AS total
@@ -69,10 +84,10 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const recentRows = await query(
     `SELECT t.id, t.amount_cents, t.type, t.description, t.occurred_on, c.name AS category_name
      FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-     WHERE t.profile_id = ?
+     WHERE t.profile_id = ? AND t.occurred_on <= ?
      ORDER BY t.occurred_on DESC, t.id DESC
      LIMIT 8`,
-    [profileId]
+    [profileId, today]
   );
   const recent = recentRows.map((r) => ({
     id: r.id,
@@ -101,13 +116,17 @@ router.get('/trends', asyncHandler(async (req, res) => {
 
   const months = Math.min(Math.max(parseInt(req.query.months, 10) || 6, 1), 24);
 
+  // Same "up to the user's today" rule as /summary, so the current month's
+  // point on the chart matches the dashboard cards.
+  const today = userToday(req);
   const rows = await query(
     `SELECT TO_CHAR(occurred_on, 'YYYY-MM') AS month, type, COALESCE(SUM(amount_cents), 0)::bigint AS total
      FROM transactions
-     WHERE profile_id = ? AND occurred_on >= (CURRENT_DATE - (?::int * INTERVAL '1 month'))
+     WHERE profile_id = ? AND occurred_on <= ?::date
+       AND occurred_on >= (?::date - (?::int * INTERVAL '1 month'))
      GROUP BY month, type
      ORDER BY month ASC`,
-    [profileId, months]
+    [profileId, today, today, months]
   );
 
   const byMonth = new Map();
