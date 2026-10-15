@@ -5,7 +5,7 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { isValidDate, isPositiveAmount, validateBody } = require('../middleware/validate');
 
-// Receipt scanning runs on a LOCAL vision model served by Ollama, so receipt
+// Receipt and bill scanning runs on a LOCAL vision model served by Ollama, so receipt
 // images never leave the machine the API runs on. The model only proposes a
 // draft - nothing is written to the database here. The frontend pre-fills
 // the transaction form with the draft and the user saves it through the
@@ -37,23 +37,38 @@ router.use(rateLimit({
 const RECEIPT_SCHEMA = {
   type: 'object',
   properties: {
+    kind: { type: 'string', enum: ['receipt', 'bill', 'other'] },
     total: { type: ['number', 'null'] },
+    currentCharges: { type: ['number', 'null'] },
+    amountDue: { type: ['number', 'null'] },
     date: { type: ['string', 'null'] },
+    dueDate: { type: ['string', 'null'] },
     merchant: { type: ['string', 'null'] },
     category: { type: ['string', 'null'] },
   },
-  required: ['total', 'date', 'merchant', 'category'],
+  required: ['kind', 'total', 'currentCharges', 'amountDue', 'date', 'dueDate', 'merchant', 'category'],
 };
 
+// Receipts and bills (electricity, water, phone, internet...) look alike to
+// a model but put the important numbers in different places: a bill lists
+// a previous balance, payments received, this period's charges and an
+// amount due, plus a statement date AND a due date. Asking the model to
+// CHOOSE "this period's charges" proved unreliable - it reached for the
+// big bold "amount due" even when that included an overdue balance. So it
+// copies both labelled numbers and the route picks (see pickAmount).
 function buildPrompt(categoryNames) {
   return [
-    'You are reading a photo of a purchase receipt or invoice.',
-    'Extract:',
-    '- total: the final amount paid, including tax and tip, as a plain number (e.g. 42.17). null if unreadable.',
-    '- date: the purchase date as YYYY-MM-DD. null if not shown.',
-    '- merchant: the store or business name, short (e.g. "Costco"). null if not shown.',
+    'You are reading a photo or scan of a purchase receipt, or of a bill/statement (e.g. electricity, gas, water, phone, internet, insurance).',
+    'Extract (numbers as plain values like 42.17, null if not shown):',
+    '- kind: "receipt" for a purchase already paid, "bill" for a statement asking for payment, "other" if neither.',
+    '- total: for a receipt, the final amount paid including tax and tip. null for bills.',
+    '- currentCharges: for a bill, the line labelled "Total Current Charges", "New Charges", "Current Charges" or similar - the charges for this billing period only. null for receipts.',
+    '- amountDue: for a bill, the line labelled "Total Amount Due", "Amount Due", "Balance Due" or similar. null for receipts.',
+    '- date: for a receipt, the purchase date; for a bill, the statement/bill date (not the due date). YYYY-MM-DD, null if not shown.',
+    '- dueDate: for a bill, the payment due date as YYYY-MM-DD; null for receipts or if not shown.',
+    '- merchant: the store, utility or company name, short (e.g. "Costco", "Hydro Ottawa"). null if not shown.',
     `- category: the single best match from this list, copied exactly: ${categoryNames.map((n) => `"${n}"`).join(', ')}. null if none fit.`,
-    'If the image is not a receipt, return null for every field.',
+    'If the image is neither a receipt nor a bill, return null for every field.',
   ].join('\n');
 }
 
@@ -67,6 +82,10 @@ async function askModel(imageBase64, categoryNames) {
         model: OLLAMA_MODEL,
         stream: false,
         format: RECEIPT_SCHEMA,
+        // Default 4096-token context on purpose: a 1600px image is ~2500
+        // tokens, which fits with the prompt. A bigger context pushes part
+        // of a 7B model off an 8 GB GPU and makes scans many times slower,
+        // so the frontend caps images at 1600px instead.
         options: { temperature: 0 },
         messages: [{ role: 'user', content: buildPrompt(categoryNames), images: [imageBase64] }],
       }),
@@ -88,6 +107,23 @@ async function askModel(imageBase64, categoryNames) {
     console.error('[scan] model reply was not JSON:', body.message?.content);
     return null;
   }
+}
+
+// A bill's spending for the month is its current charges; the amount due
+// can also include an unpaid balance from a previous bill, which was
+// already recorded last month. Fall back to the amount due only when the
+// bill doesn't break out current charges (many simple bills don't).
+// Some models put a bill's figure in `total` anyway, so that's the last
+// resort.
+function pickAmount(kind, extracted) {
+  const candidates = kind === 'bill'
+    ? [extracted.currentCharges, extracted.amountDue, extracted.total]
+    : [extracted.total, extracted.amountDue];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (c !== null && c !== undefined && isPositiveAmount(n)) return n;
+  }
+  return NaN;
 }
 
 router.post(
@@ -117,15 +153,25 @@ router.post(
     // Everything the model says is treated as untrusted input: each field
     // is re-checked and dropped (null) rather than passed through if it
     // doesn't fit, so the form only ever gets pre-filled with sane values.
-    const total = Number(extracted.total);
+    const kind = extracted.kind === 'bill' ? 'bill' : 'receipt';
+    const total = pickAmount(kind, extracted);
     const merchant = typeof extracted.merchant === 'string' ? extracted.merchant.trim().slice(0, 255) : '';
     const categoryName = typeof extracted.category === 'string' ? extracted.category.trim().toLowerCase() : '';
     const category = categories.find((c) => c.name.toLowerCase() === categoryName);
 
     res.json({
+      kind,
       type: 'expense',
       amount: isPositiveAmount(total) ? Math.round(total * 100) / 100 : null,
       date: isValidDate(extracted.date) ? extracted.date : null,
+      // Only meaningful for bills. Returned separately (the transaction form
+      // has no due-date field) so a future Bills page can use it directly.
+      dueDate: kind === 'bill' && isValidDate(extracted.dueDate) ? extracted.dueDate : null,
+      // What actually has to be paid, which can be more than `amount` when
+      // a previous balance is carried over - shown to the user as a hint.
+      amountDue: kind === 'bill' && isPositiveAmount(Number(extracted.amountDue)) && extracted.amountDue !== null
+        ? Math.round(Number(extracted.amountDue) * 100) / 100
+        : null,
       description: merchant || null,
       categoryId: category ? category.id : null,
     });

@@ -3,9 +3,11 @@ import client from '../api/client.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-// Phone photos are often 4000px+ and several MB. Receipt text stays
-// readable at 1600px, and the smaller image uploads faster and is read
-// faster by the model, so shrink it in the browser before sending.
+// Phone photos are often 4000px+ and several MB. Receipt and bill text
+// stays readable at 1600px (~145 dpi for a letter-size PDF page), and the
+// smaller image uploads faster and fits the model's default context
+// window, so shrink it in the browser before sending. Going bigger makes
+// the request overflow that window - see the note in backend/routes/scan.js.
 const SCAN_MAX_SIDE = 1600;
 
 async function imageFileToDataUrl(file) {
@@ -17,6 +19,37 @@ async function imageFileToDataUrl(file) {
   canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+// Bills usually arrive as emailed PDFs. Render page 1 (where the amount
+// due and due date live) to an image so the same scan route handles it.
+// pdf.js is large, so it's only loaded the first time someone picks a PDF.
+async function pdfFileToDataUrl(file) {
+  const [pdfjs, { default: workerUrl }] = await Promise.all([
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+  ]);
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  try {
+    const page = await pdf.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: SCAN_MAX_SIDE / Math.max(base.width, base.height) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; // PDFs can have a transparent background
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    pdf.destroy();
+  }
+}
+
+function formatDueDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 const emptyForm = {
@@ -60,26 +93,35 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
     setScanNote('');
     setScanning(true);
     try {
-      const image = await imageFileToDataUrl(file);
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      const image = isPdf ? await pdfFileToDataUrl(file) : await imageFileToDataUrl(file);
       const { data } = await client.post('/scan/receipt', { image });
       const found = [data.amount, data.date, data.description, data.categoryId].filter((v) => v !== null).length;
       if (found === 0) {
-        setError("Couldn't read that receipt. Try a clearer, flatter photo, or enter it manually.");
+        setError("Couldn't read that document. Try a clearer, flatter photo, or enter it manually.");
         return;
       }
+      const isBill = data.kind === 'bill';
       setForm((f) => ({
         ...f,
         type: 'expense',
         amount: data.amount !== null ? String(data.amount) : f.amount,
         date: data.date ?? f.date,
-        description: data.description ?? f.description,
+        description: data.description !== null ? (isBill ? `${data.description} bill` : data.description) : f.description,
         categoryId: data.categoryId !== null ? String(data.categoryId) : (f.type === 'expense' ? f.categoryId : ''),
       }));
-      setScanNote(found === 4
-        ? 'Filled in from your receipt. Check it before saving.'
-        : 'Filled in what could be read from your receipt. Check it and complete the rest.');
+      const source = isBill ? 'bill' : 'receipt';
+      const due = isBill && data.dueDate ? ` Payment is due ${formatDueDate(data.dueDate)}.` : '';
+      // The form records this period's charges; say so when the bill asks
+      // for more because an earlier balance was carried over.
+      const carried = isBill && data.amountDue !== null && data.amount !== null && data.amountDue > data.amount
+        ? ` The bill's amount due is $${data.amountDue.toFixed(2)}, which includes an earlier unpaid balance.`
+        : '';
+      setScanNote((found === 4
+        ? `Filled in from your ${source}. Check it before saving.`
+        : `Filled in what could be read from your ${source}. Check it and complete the rest.`) + due + carried);
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not scan this receipt. Enter the transaction manually.');
+      setError(err.response?.data?.error || 'Could not scan this document. Enter the transaction manually.');
     } finally {
       setScanning(false);
     }
@@ -120,13 +162,14 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
       {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
       {!initial && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-          {/* capture="environment" opens the rear camera on phones; on a
-              desktop it falls back to a normal file picker. */}
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
+          {/* No `capture` attribute on purpose: it would force the camera
+              on phones, making emailed PDF bills impossible to pick. Without
+              it, phones offer both "Take photo" and "Choose file". */}
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
                  onChange={handleScan} style={{ display: 'none' }} />
           <button type="button" className="btn btn-secondary btn-sm" disabled={scanning || saving}
                   onClick={() => fileInputRef.current?.click()}>
-            {scanning ? 'Reading receipt…' : 'Scan receipt'}
+            {scanning ? 'Reading…' : 'Scan receipt or bill'}
           </button>
           {scanNote && <span style={{ color: 'var(--pine)', fontSize: 13 }}>{scanNote}</span>}
         </div>
