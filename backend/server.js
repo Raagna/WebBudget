@@ -11,11 +11,17 @@ const transactionRoutes = require('./routes/transactions');
 const subscriptionRoutes = require('./routes/subscriptions');
 const billRoutes = require('./routes/bills');
 const dashboardRoutes = require('./routes/dashboard');
+const scanRoutes = require('./routes/scan');
 
 const app = express();
 
 app.disable('x-powered-by'); // don't advertise the stack in response headers
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+
+// Mounted BEFORE the global JSON parser: receipt photos are far bigger than
+// its 100kb limit, and that parser would reject them with a 413 before the
+// route's own larger parser ever ran.
+app.use('/api/scan', scanRoutes);
 
 // The CSV import route parses its own body with a 5mb limit; the global
 // 100kb parser must skip it or it rejects larger files before that runs.
