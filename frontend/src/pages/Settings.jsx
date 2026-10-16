@@ -121,15 +121,15 @@ export default function Settings() {
         {categories.length === 0 ? (
           <div className="empty-state">No categories to show.</div>
         ) : (
-          <table className="ledger">
+          <table className="ledger stack">
             <thead><tr><th>Name</th><th>Type</th><th></th><th></th></tr></thead>
             <tbody>
               {categories.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td className="mono">{c.type}</td>
-                  <td>{!!c.is_default && <span className="tag">Default</span>}</td>
-                  <td><button className="btn btn-danger btn-sm" onClick={() => removeCategory(c)}>Remove</button></td>
+                  <td className="col-desc">{c.name}</td>
+                  <td className="mono col-date">{c.type}</td>
+                  <td className="col-cat">{!!c.is_default && <span className="tag">Default</span>}</td>
+                  <td className="col-actions"><button className="btn btn-danger btn-sm" onClick={() => removeCategory(c)}>Remove</button></td>
                 </tr>
               ))}
             </tbody>
@@ -143,14 +143,14 @@ export default function Settings() {
           <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 12 }}>
             These are built-in categories you've hidden. Restoring one brings it back to your list above.
           </p>
-          <table className="ledger">
+          <table className="ledger stack">
             <thead><tr><th>Name</th><th>Type</th><th></th></tr></thead>
             <tbody>
               {hidden.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td className="mono">{c.type}</td>
-                  <td><button className="btn btn-secondary btn-sm" onClick={() => restoreCategory(c)}>Restore</button></td>
+                  <td className="col-desc">{c.name}</td>
+                  <td className="mono col-date">{c.type}</td>
+                  <td className="col-actions"><button className="btn btn-secondary btn-sm" onClick={() => restoreCategory(c)}>Restore</button></td>
                 </tr>
               ))}
             </tbody>
@@ -161,10 +161,10 @@ export default function Settings() {
       <div className="card" style={{ borderColor: 'var(--brick)' }}>
         <div className="card-title" style={{ color: 'var(--brick)' }}>Danger zone</div>
         <p style={{ fontSize: 13, marginBottom: showDeleteForm ? 14 : 0 }}>
-          Permanently delete your account, its custom categories, and every profile you own outright
-          (along with their transactions). If you own a shared household with other active members,
-          you'll need to remove them or have them leave first — deleting your account never
-          silently deletes a household out from under people you shared it with.
+          Permanently delete your account, its custom categories, and every profile nobody else uses
+          (along with their transactions and bills). Shared households stay, with everything you
+          added to them, for the other members. If you're the only owner of one, promote another
+          member to owner first.
         </p>
         {!showDeleteForm ? (
           <button className="btn btn-danger" onClick={() => setShowDeleteForm(true)}>Delete my account</button>

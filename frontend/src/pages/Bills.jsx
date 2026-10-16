@@ -221,17 +221,17 @@ export default function Bills() {
     return list.map((b) => (
       <Fragment key={b.id}>
         <tr>
-          <td className="mono">{formatDate(b.dueOn)}</td>
-          <td>{b.name}</td>
-          <td>{b.categoryName && <span className="tag">{b.categoryName}</span>}</td>
-          <td>{b.isRecurring && <span className="tag recurring">recurring</span>}</td>
-          <td className="bill-status">
+          <td className="mono col-date">{formatDate(b.dueOn)}</td>
+          <td className="col-desc">{b.name}</td>
+          <td className="col-cat">{b.categoryName && <span className="tag">{b.categoryName}</span>}</td>
+          <td className="col-rec">{b.isRecurring && <span className="tag recurring">recurring</span>}</td>
+          <td className="bill-status col-status">
             {b.isPaid
               ? <span className="tag">Paid</span>
               : <span className={b.dueOn < today ? 'due overdue' : 'due'}>{dueLabel(b.dueOn, today)}</span>}
           </td>
-          <td className="amount expense">{formatMoney(b.amount, { currency })}</td>
-          <td>
+          <td className="amount col-amount expense">{formatMoney(b.amount, { currency })}</td>
+          <td className="col-actions">
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
               {b.isPaid
                 ? <button className="btn btn-secondary btn-sm" onClick={() => handleMarkUnpaid(b)}>Mark unpaid</button>
@@ -297,7 +297,7 @@ export default function Bills() {
           <p style={{ color: 'var(--ink-soft)', fontSize: 13, margin: 0 }}>{emptyText}</p>
         ) : (
           <div className="table-scroll">
-            <table className="ledger">
+            <table className="ledger stack">
               <thead>
                 <tr>
                   <th>Due</th><th>Bill</th><th>Category</th><th>Recurring</th><th>Status</th>

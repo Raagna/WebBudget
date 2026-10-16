@@ -134,17 +134,17 @@ export default function Dashboard() {
             <p>Add your first transaction to see it show up here.</p>
           </div>
         ) : (
-          <table className="ledger">
+          <table className="ledger stack">
             <thead>
               <tr><th>Date</th><th>Description</th><th>Category</th><th style={{ textAlign: 'right' }}>Amount</th></tr>
             </thead>
             <tbody>
               {summary.recentTransactions.map((t) => (
                 <tr key={t.id}>
-                  <td className="mono">{formatDate(t.date)}</td>
-                  <td>{t.description}</td>
-                  <td><span className="tag">{t.category}</span></td>
-                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
+                  <td className="mono col-date">{formatDate(t.date)}</td>
+                  <td className="col-desc">{t.description}</td>
+                  <td className="col-cat"><span className="tag">{t.category}</span></td>
+                  <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
                 </tr>
               ))}
             </tbody>

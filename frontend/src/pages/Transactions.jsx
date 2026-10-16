@@ -330,7 +330,7 @@ export default function Transactions() {
             <p>Try adjusting your filters, or add a new transaction above.</p>
           </div>
         ) : (
-          <table className="ledger">
+          <table className="ledger stack">
             <thead>
               <tr>
                 <th className="select-col"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" /></th>
@@ -349,12 +349,12 @@ export default function Transactions() {
                       aria-label={`Select ${t.description}`}
                     />
                   </td>
-                  <td className="mono">{formatDate(t.date)}</td>
-                  <td>{t.description}</td>
-                  <td>{t.categoryName && <span className="tag">{t.categoryName}</span>}</td>
-                  <td>{t.isRecurring && <span className="tag recurring">{t.recurringInterval}</span>}</td>
-                  <td className={`amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
-                  <td>
+                  <td className="mono col-date">{formatDate(t.date)}</td>
+                  <td className="col-desc">{t.description}</td>
+                  <td className="col-cat">{t.categoryName && <span className="tag">{t.categoryName}</span>}</td>
+                  <td className="col-rec">{t.isRecurring && <span className="tag recurring">{t.recurringInterval}</span>}</td>
+                  <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
+                  <td className="col-actions">
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(t); setShowForm(false); }}>Edit</button>
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(t.id)}>Delete</button>

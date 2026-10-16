@@ -10,5 +10,14 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: process.env.BASE_PATH || '/',
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    // In development the app calls the API at /api on its own origin and
+    // Vite forwards it to the backend. A phone on the same Wi-Fi then only
+    // needs http://<this-PC>:5173 (run `npm run dev:lan`) - no second port
+    // to reach and no CORS setup. Production builds use VITE_API_URL.
+    proxy: {
+      '/api': process.env.API_PROXY_TARGET || 'http://localhost:4000',
+    },
+  },
 });
