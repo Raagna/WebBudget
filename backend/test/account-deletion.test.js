@@ -56,6 +56,22 @@ test("a member deleting their account keeps the transactions they entered", asyn
   assert.deepEqual(left.map((t) => t.description), ['Entered by Bob']);
 });
 
+test("a member deleting their account keeps the bills they added to a shared household", async () => {
+  const { a, b, householdId } = await sharedHousehold();
+  const added = await api('POST', '/bills', {
+    token: b.token,
+    body: { profileId: householdId, name: 'Hydro', amount: 84.12, dueOn: '2026-11-03' },
+  });
+  assert.equal(added.status, 201, added.text);
+
+  const del = await api('DELETE', '/auth/account', { token: b.token, body: { password: b.password } });
+  assert.equal(del.status, 204, del.text);
+
+  const bills = await api('GET', `/bills?profileId=${householdId}`, { token: a.token });
+  assert.equal(bills.status, 200, bills.text);
+  assert.deepEqual(bills.body.bills.map((x) => x.name), ['Hydro']);
+});
+
 test('the only owner of a shared household cannot delete their account', async () => {
   const { a, b, householdId } = await sharedHousehold();
   const del = await api('DELETE', '/auth/account', { token: a.token, body: { password: a.password } });

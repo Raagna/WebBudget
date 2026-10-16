@@ -167,8 +167,10 @@ async function run() {
       await seedTemplates(personalProfileId, personalTemplates, m);
     }
 
-    // Subscriptions and bills (API still supports these; no longer
-    // surfaced in the UI, kept user-scoped rather than split across profiles).
+    // Subscriptions (API only, no UI) stay user-scoped. Bills belong to a
+    // profile like transactions do (migration 004) - shared utilities in
+    // Household, one overdue personal bill so the Bills page shows both
+    // sections straight away.
     const subs = [
       { name: 'Netflix', amount: 15.49, cat: 'Subscription' },
       { name: 'Spotify', amount: 11.99, cat: 'Subscription' },
@@ -188,17 +190,18 @@ async function run() {
     }
 
     const bills = [
-      { name: 'Electric bill', amount: 95, cat: 'Utilities', daysOut: 5, paid: false },
-      { name: 'Car insurance', amount: 120, cat: 'Transportation', daysOut: 20, paid: false },
-      { name: 'Water bill', amount: 38, cat: 'Utilities', daysOut: -10, paid: true },
+      { name: 'Electric bill', amount: 95, cat: 'Utilities', daysOut: 5, paid: false, profileId: householdProfileId },
+      { name: 'Car insurance', amount: 120, cat: 'Transportation', daysOut: 20, paid: false, profileId: householdProfileId },
+      { name: 'Water bill', amount: 38, cat: 'Utilities', daysOut: -10, paid: true, profileId: householdProfileId },
+      { name: 'Phone bill', amount: 45, cat: 'Utilities', daysOut: -3, paid: false, profileId: personalProfileId },
     ];
     for (const b of bills) {
       const due = new Date();
       due.setUTCDate(due.getUTCDate() + b.daysOut);
       await tx.run(
-        `INSERT INTO bills (user_id, category_id, name, amount_cents, due_on, is_paid, is_recurring)
-         VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
-        [userId, await catId(b.cat), b.name, Math.round(b.amount * 100), isoDate(due), b.paid]
+        `INSERT INTO bills (user_id, profile_id, category_id, name, amount_cents, due_on, is_paid, is_recurring)
+         VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        [userId, b.profileId, await catId(b.cat), b.name, Math.round(b.amount * 100), isoDate(due), b.paid]
       );
     }
   });

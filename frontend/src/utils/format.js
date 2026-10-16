@@ -23,6 +23,12 @@ export function localToday(now = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+// Whole days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when
+// `toIso` is earlier.
+export function daysBetween(fromIso, toIso) {
+  return Math.round((Date.parse(toIso + 'T00:00:00Z') - Date.parse(fromIso + 'T00:00:00Z')) / 86_400_000);
+}
+
 export function currentYearMonth() {
   return localToday().slice(0, 7);
 }

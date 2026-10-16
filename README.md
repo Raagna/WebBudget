@@ -71,12 +71,13 @@ transactions       id, user_id, profile_id, category_id, amount_cents, type,
                    description, occurred_on, is_recurring, recurring_interval
 subscriptions      id, user_id, category_id, name, amount_cents, billing_cycle,
                    next_billing_on, is_active   (API only, not in the UI)
-bills              id, user_id, category_id, name, amount_cents, due_on,
-                   is_paid, is_recurring         (API only, not in the UI)
+bills              id, user_id, profile_id, category_id, name, amount_cents,
+                   due_on, is_paid, is_recurring
 ```
 
 Full DDL: `backend/db/migrations/001_initial.sql`, `002_household_members.sql`,
-and `003_profile_currency.sql`
+`003_profile_currency.sql` and `004_bills_profile.sql` (bills moved from
+per-user to per-profile, existing bills backfilled to their owner's oldest profile)
 (see "Migrations & upgrading" below for how later changes are structured).
 Notes:
 - Amounts are stored as **integer cents**, never floats, to avoid rounding
@@ -173,7 +174,9 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 | POST | `/api/transactions/bulk-delete` | Delete many at once: `{ ids: [...] }` — multi-select in the UI |
 | PATCH | `/api/transactions/bulk-update` | Bulk-edit category and/or recurring flag: `{ ids: [...], categoryId?, isRecurring? }` |
 | GET/POST/PUT/DELETE | `/api/subscriptions[/:id]` | Available in the API; not currently linked from the UI |
-| GET/POST/PUT/DELETE | `/api/bills[/:id]` | Available in the API; not currently linked from the UI |
+| GET | `/api/bills?profileId=` | All bills in a profile, soonest due first |
+| POST/PUT/DELETE | `/api/bills[/:id]` | Create (body includes `profileId`), edit, delete — any active member of the bill's profile |
+| POST | `/api/bills/:id/pay` | Mark paid; with `{ expense: { amount, date, description?, categoryId? } }` also records the expense transaction, atomically |
 | GET | `/api/dashboard/summary?profileId=&month=YYYY-MM` | Totals, spending by category, recent transactions — scoped to one profile |
 | GET | `/api/dashboard/trends?profileId=&months=N` | Income vs. expenses per month, for charts — scoped to one profile |
 
@@ -183,7 +186,8 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
   in plaintext.
 - **JWT** (7-day expiry) signed with a secret from `.env` — the server
   refuses to boot if `JWT_SECRET` is unset.
-- **User-data isolation**: every query touching `transactions`, `bills`, or
+- **User-data isolation**: every query touching `transactions` or `bills`
+  goes through an active `profile_members` row for `req.userId`, and
   `subscriptions` filters by `user_id = req.userId`, taken only from the
   verified token — this was tested by creating two accounts and confirming
   one user gets `404`, not another user's data, when guessing an ID.
@@ -224,23 +228,25 @@ frontend/src/
     Layout.jsx              sidebar + mobile hamburger toggle + profile switcher + invite badge
     StatCard.jsx             dashboard summary tile
     TransactionForm.jsx      shared add/edit form
+    BillForm.jsx             bill add/edit form (also takes a scanned draft)
   pages/
     Login.jsx / Register.jsx
     Dashboard.jsx            summaries + charts (scoped to active profile)
     Transactions.jsx         filterable/sortable ledger, multi-select + range select, CSV import/export
+    Bills.jsx                overdue / upcoming / paid bills, scan a bill, mark paid (optionally adding the expense)
     Reports.jsx              longer-range trend charts
     Profiles.jsx             create/rename/delete/currency, invites, member management, promote/demote
     Settings.jsx             category management (add/remove/hide/restore), account deletion
   utils/
     format.js                money/date formatting helpers (formatMoney takes a currency code)
     currencies.js             supported currency list for the dropdown UI (mirrors the backend's list)
+    scan.js                   photo/PDF -> downscaled JPEG for the scan route (shared by both forms)
   styles.css                  design tokens + all component styles
 ```
 
-**Note:** `Subscriptions.jsx` and `Bills.jsx` pages were removed along with
-their sidebar links to keep navigation focused on transactions. The
-underlying `/api/subscriptions` and `/api/bills` endpoints are still there
-if you want to bring the UI back later.
+**Note:** the `Subscriptions.jsx` page was removed along with its sidebar
+link to keep navigation focused. The underlying `/api/subscriptions`
+endpoints are still there if you want to bring the UI back later.
 
 **Mobile navigation:** below 720px wide, the sidebar collapses into a top
 bar with a hamburger toggle. Tapping it drops down the full nav (profile
@@ -378,9 +384,8 @@ variance so months aren't identical). It also seeds a second account,
 owner) of the "Household" profile — log in as either account to see the
 shared budget, or as the partner account to see what a `member`'s view
 and permissions look like without needing to run through the invite flow
-yourself first. It also seeds a few sample subscriptions and bills
-directly in the database for completeness, even though those aren't
-currently linked from the UI.
+yourself first. It also seeds a few bills (three in Household, one overdue in
+Personal) and some sample subscriptions, which are API-only.
 
 ## Project file structure
 
@@ -389,7 +394,7 @@ finance-app/
   .github/workflows/
     deploy-pages.yml  builds frontend/ and publishes it to GitHub Pages on push to main
   backend/
-    db/                migrations/(001_initial.sql, 002_household_members.sql, 003_profile_currency.sql), migrate.js, index.js (pool + migration runner)
+    db/                migrations/(001_initial.sql ... 004_bills_profile.sql), migrate.js, index.js (pool + migration runner)
     middleware/        auth.js, validate.js, asyncHandler.js
     routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
     utils/csv.js       dependency-free CSV parse/generate for import/export
@@ -704,8 +709,8 @@ to keep growing this beyond a transaction tracker.
   version of this; the fuller version would show a live progress bar per
   category on the dashboard and support rollover of unused budget.
 - **Bill payment reminders**: push/email notifications a few days before a
-  recurring bill is due, built on top of the `bills` table that already
-  exists in the API but isn't currently surfaced in the UI.
+  recurring bill is due, built on top of the `bills` table behind the
+  Bills page.
 
 **Reporting & export**
 - **CSV/PDF export** of transactions or a monthly summary report, for
