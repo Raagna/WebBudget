@@ -11,12 +11,16 @@ export function formatDate(iso) {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// Today's date in the user's own timezone as YYYY-MM-DD. toISOString()
-// would give the UTC date, which is already "tomorrow" on a US evening -
-// enough to show a bill due today as overdue.
-export function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// Today's date as YYYY-MM-DD in the user's own timezone. Don't use
+// toISOString() for this: it gives the UTC date, which is already
+// tomorrow in the evening across the Americas. Call it when the value is
+// needed, not once at module load, so a tab left open past midnight
+// doesn't keep yesterday's date.
+export function localToday(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // Whole days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when
@@ -26,5 +30,5 @@ export function daysBetween(fromIso, toIso) {
 }
 
 export function currentYearMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return localToday().slice(0, 7);
 }

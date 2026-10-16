@@ -1,8 +1,8 @@
 const express = require('express');
-const { query, queryOne, run } = require('../db');
+const { query, queryOne, run, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
-const { parseCsv, generateCsv } = require('../utils/csv');
+const { parseCsv, generateCsv, unneutralize } = require('../utils/csv');
 const {
   isNonEmptyString,
   isValidDate,
@@ -221,10 +221,12 @@ router.post(
     );
     const categoryByName = new Map(visibleCategories.map((c) => [c.name.toLowerCase(), c.id]));
 
-    let imported = 0;
+    const toInsert = [];
     const errors = [];
     const warnings = [];
 
+    // Pass 1: validate every row without touching the database. Rows with
+    // problems are skipped and reported, the same as before.
     for (let i = 1; i < rows.length; i++) {
       const raw = rows[i];
       if (raw.length === 1 && raw[0].trim() === '') continue; // blank line
@@ -232,8 +234,10 @@ router.post(
 
       const date = (raw[colIndex.date] || '').trim();
       const type = (raw[colIndex.type] || '').trim().toLowerCase();
-      const description = colIndex.description >= 0 ? (raw[colIndex.description] || '').trim() : '';
-      const categoryName = colIndex.category >= 0 ? (raw[colIndex.category] || '').trim() : '';
+      // unneutralize: strip the apostrophe our own export adds in front of
+      // text that looks like a spreadsheet formula (see utils/csv.js).
+      const description = colIndex.description >= 0 ? unneutralize((raw[colIndex.description] || '').trim()) : '';
+      const categoryName = colIndex.category >= 0 ? unneutralize((raw[colIndex.category] || '').trim()) : '';
       const amountStr = (raw[colIndex.amount] || '').trim();
       const recurringStr = colIndex.recurring >= 0 ? (raw[colIndex.recurring] || '').trim().toLowerCase() : '';
       const intervalStr = colIndex.recurring_interval >= 0 ? (raw[colIndex.recurring_interval] || '').trim().toLowerCase() : '';
@@ -254,16 +258,24 @@ router.post(
       const recurring = recurringStr === 'true' || recurringStr === 'yes' || recurringStr === '1';
       const interval = recurring && ['weekly', 'monthly', 'yearly'].includes(intervalStr) ? intervalStr : null;
 
-      await run(
-        `INSERT INTO transactions
-           (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.userId, profileId, categoryId, toCents(amount), type, description.slice(0, 255), date, recurring, interval]
-      );
-      imported++;
+      toInsert.push([req.userId, profileId, categoryId, toCents(amount), type, description.slice(0, 255), date, recurring, interval]);
     }
 
-    res.json({ imported, errors, warnings, totalRows: rows.length - 1 });
+    // Pass 2: insert all valid rows in ONE database transaction. If any
+    // insert fails, none are kept, so a failed import never leaves half a
+    // file behind that a retry would then duplicate.
+    await withTransaction(async (tx) => {
+      for (const values of toInsert) {
+        await tx.run(
+          `INSERT INTO transactions
+             (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          values
+        );
+      }
+    });
+
+    res.json({ imported: toInsert.length, errors, warnings, totalRows: rows.length - 1 });
   })
 );
 

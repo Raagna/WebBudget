@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import client from '../api/client.js';
 import { scanFileToDataUrl, SCAN_ACCEPT } from '../utils/scan.js';
-
-const TODAY = new Date().toISOString().slice(0, 10);
+import { localToday } from '../utils/format.js';
 
 function formatDueDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const emptyForm = {
-  amount: '', type: 'expense', description: '', date: TODAY,
+// A function, not a constant: the date default must be today's date at
+// the moment the form opens, not when the page first loaded.
+const emptyForm = () => ({
+  amount: '', type: 'expense', description: '', date: localToday(),
   categoryId: '', isRecurring: false, recurringInterval: 'monthly',
-};
+});
 
 export default function TransactionForm({ categories, initial, onSubmit, onCancel }) {
-  const [form, setForm] = useState(initial ? mapFromTransaction(initial) : emptyForm);
+  const [form, setForm] = useState(() => (initial ? mapFromTransaction(initial) : emptyForm()));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);

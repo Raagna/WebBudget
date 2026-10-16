@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { todayIso } from '../utils/format.js';
+import { localToday } from '../utils/format.js';
 
 function mapFromBill(b) {
   return {
     name: b.name ?? '',
     amount: b.amount != null ? String(b.amount) : '',
-    dueOn: b.dueOn ?? todayIso(),
+    dueOn: b.dueOn ?? localToday(),
     categoryId: b.categoryId ? String(b.categoryId) : '',
     isRecurring: !!b.isRecurring,
   };

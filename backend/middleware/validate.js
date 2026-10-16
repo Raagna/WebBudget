@@ -12,10 +12,13 @@ function isValidEmail(v) {
   return typeof v === 'string' && EMAIL_RE.test(v) && v.length <= 254;
 }
 
+// Round-trips the parsed date back to a string: JS silently rolls an
+// impossible date like 2024-02-31 over to March 2, which used to pass
+// here and then fail in Postgres with a 500.
 function isValidDate(v) {
   if (typeof v !== 'string' || !DATE_RE.test(v)) return false;
   const d = new Date(v + 'T00:00:00Z');
-  return !Number.isNaN(d.getTime());
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
 // Curated rather than exhaustive - covers the currencies a personal
@@ -33,8 +36,13 @@ function isValidCurrency(v) {
   return typeof v === 'string' && SUPPORTED_CURRENCIES.has(v.toUpperCase());
 }
 
+// Amounts are stored as INTEGER cents, whose ceiling is 2,147,483,647
+// (about 21.4 million). Anything larger used to pass validation and then
+// overflow the column with a 500.
+const MAX_AMOUNT = 21_000_000;
+
 function isPositiveAmount(v) {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1_000_000_000;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= MAX_AMOUNT;
 }
 
 // Amounts are accepted from clients as decimal dollars (e.g. 65.4) and

@@ -3,7 +3,7 @@ import client from '../api/client';
 import BillForm from '../components/BillForm.jsx';
 import StatCard from '../components/StatCard.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
-import { formatMoney, formatDate, todayIso, daysBetween } from '../utils/format.js';
+import { formatMoney, formatDate, localToday, daysBetween } from '../utils/format.js';
 import { scanFileToDataUrl, SCAN_ACCEPT } from '../utils/scan.js';
 
 const UPCOMING_WINDOW_DAYS = 30;
@@ -37,7 +37,7 @@ export default function Bills() {
   const [showPaid, setShowPaid] = useState(false);
   const fileInputRef = useRef(null);
 
-  const today = todayIso();
+  const today = localToday();
 
   const load = useCallback(async () => {
     if (!activeProfileId) return;

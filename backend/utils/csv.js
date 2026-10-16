@@ -59,7 +59,26 @@ function parseCsv(text) {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
+// Spreadsheet apps run a cell starting with = + - @ (or a tab/CR before
+// one) as a formula. Descriptions and category names are typed by any
+// member of a shared profile, so an exported file could otherwise carry a
+// formula that runs when someone else opens it. Text cells like that get
+// a leading apostrophe, which spreadsheets treat as "this is text" and
+// don't display. Numbers are left alone - they're generated here, not
+// typed. unneutralize() undoes this on import so export -> import
+// round-trips exactly.
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+function neutralize(value) {
+  return typeof value === 'string' && FORMULA_START.test(value) ? `'${value}` : value;
+}
+
+function unneutralize(value) {
+  return value.length > 1 && value[0] === "'" && FORMULA_START.test(value.slice(1)) ? value.slice(1) : value;
+}
+
 function csvEscapeField(value) {
+  value = neutralize(value);
   const str = value === null || value === undefined ? '' : String(value);
   if (/[",\n]/.test(str)) {
     return '"' + str.replace(/"/g, '""') + '"';
@@ -73,4 +92,4 @@ function generateCsv(rows) {
   return rows.map((row) => row.map(csvEscapeField).join(',')).join('\r\n') + '\r\n';
 }
 
-module.exports = { parseCsv, generateCsv };
+module.exports = { parseCsv, generateCsv, unneutralize };

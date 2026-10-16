@@ -6,7 +6,7 @@ import {
 import client from '../api/client';
 import StatCard from '../components/StatCard.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
-import { formatMoney, formatDate } from '../utils/format.js';
+import { formatMoney, formatDate, localToday } from '../utils/format.js';
 import { CURRENCIES } from '../utils/currencies.js';
 
 const PIE_COLORS = ['#2f5d50', '#b8933a', '#a6432d', '#6b8f87', '#c9a876', '#7a3f30', '#4a746a', '#8f6b2e'];
@@ -25,8 +25,8 @@ export default function Dashboard() {
     async function load() {
       try {
         const [summaryRes, trendsRes] = await Promise.all([
-          client.get('/dashboard/summary', { params: { profileId: activeProfileId } }),
-          client.get('/dashboard/trends', { params: { profileId: activeProfileId, months: 9 } }),
+          client.get('/dashboard/summary', { params: { profileId: activeProfileId, today: localToday() } }),
+          client.get('/dashboard/trends', { params: { profileId: activeProfileId, months: 9, today: localToday() } }),
         ]);
         if (cancelled) return;
         setSummary(summaryRes.data);
