@@ -49,6 +49,41 @@ test('the trend chart stops at the same "today" as the cards', async () => {
   assert.equal(oct.expenses, 50);
 });
 
+test('safe to spend sets aside unpaid bills and scheduled expenses, and spreads the rest per day', async () => {
+  const u = await newUser(api, 'Safe');
+  const bill = (body) => api('POST', '/bills', { token: u.token, body: { profileId: u.profileId, ...body } });
+  await addTransaction(api, u.token, u.profileId, { type: 'income', amount: 3000, date: '2026-10-01', description: 'Pay' });
+  await addTransaction(api, u.token, u.profileId, { amount: 400, date: '2026-10-10', description: 'Groceries' });
+  await addTransaction(api, u.token, u.profileId, { amount: 1200, date: '2026-10-28', description: 'Rent (scheduled)' });
+  await bill({ name: 'Hydro', amount: 84.12, dueOn: '2026-10-23' }); // due later this month
+  await bill({ name: 'Phone', amount: 60, dueOn: '2026-10-05' }); // overdue, still owed
+  await bill({ name: 'Insurance', amount: 150, dueOn: '2026-11-02' }); // next month: not counted
+  const paid = await bill({ name: 'Internet', amount: 70, dueOn: '2026-10-20' });
+  assert.equal((await api('POST', `/bills/${paid.body.id}/pay`, { token: u.token, body: {} })).status, 200);
+
+  const res = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-10-15`, { token: u.token });
+  assert.equal(res.status, 200, res.text);
+  const s = res.body.safeToSpend;
+  assert.equal(s.billsDue, 144.12, 'Hydro + overdue Phone; not next month, not paid');
+  assert.equal(s.scheduled, 1200);
+  assert.equal(s.amount, 3000 - 400 - 144.12 - 1200); // 1255.88
+  assert.equal(s.daysLeft, 17); // Oct 15..31
+  assert.equal(s.perDay, 73.87); // floor(1255.88 / 17) to the cent
+  assert.deepEqual(s.upcomingBills.map((b) => [b.name, b.overdue]), [['Phone', true], ['Hydro', false]]);
+});
+
+test('safe to spend can go negative, and is only given for the current month', async () => {
+  const u = await newUser(api, 'Tight');
+  await addTransaction(api, u.token, u.profileId, { type: 'income', amount: 500, date: '2026-10-01' });
+  await addTransaction(api, u.token, u.profileId, { amount: 700, date: '2026-10-02' });
+  const now = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-10-15`, { token: u.token });
+  assert.equal(now.body.safeToSpend.amount, -200);
+  assert.equal(now.body.safeToSpend.perDay, 0);
+
+  const past = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-10-15&month=2026-09`, { token: u.token });
+  assert.equal(past.body.safeToSpend, null);
+});
+
 test('an invalid today falls back to the server date instead of erroring', async () => {
   const u = await newUser(api, 'Fallback');
   const res = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-02-31`, { token: u.token });

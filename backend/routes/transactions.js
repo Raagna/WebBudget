@@ -31,6 +31,10 @@ function serialize(row) {
     categoryName: row.category_name,
     categoryIcon: row.category_icon,
     profileId: row.profile_id,
+    // Who entered it - shown in shared households. null once that member
+    // has deleted their account (the transaction itself stays; see
+    // migration 005).
+    addedBy: row.user_id ? { id: row.user_id, name: row.added_by_name } : null,
   };
 }
 
@@ -78,7 +82,7 @@ async function requireTransactionAccess(req, res, transactionId) {
 // Shared by GET / and GET /export so the two never drift out of sync on
 // what "matching the current filters" means.
 function buildFilterClauses(req, profileId) {
-  const { type, categoryId, from, to, minAmount, maxAmount } = req.query;
+  const { type, categoryId, from, to, minAmount, maxAmount, addedBy } = req.query;
   const clauses = ['t.profile_id = ?'];
   const params = [profileId];
 
@@ -89,6 +93,10 @@ function buildFilterClauses(req, profileId) {
   if (categoryId && Number.isInteger(Number(categoryId))) {
     clauses.push('t.category_id = ?');
     params.push(Number(categoryId));
+  }
+  if (addedBy && Number.isInteger(Number(addedBy))) {
+    clauses.push('t.user_id = ?');
+    params.push(Number(addedBy));
   }
   if (isValidDate(from)) {
     clauses.push('t.occurred_on >= ?');
@@ -109,7 +117,7 @@ function buildFilterClauses(req, profileId) {
   return { clauses, params };
 }
 
-// GET /api/transactions?profileId=&type=&categoryId=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
+// GET /api/transactions?profileId=&type=&categoryId=&addedBy=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
 router.get('/', asyncHandler(async (req, res) => {
   const profileId = await requireOwnedProfile(req, res, req.query.profileId);
   if (profileId === null) return;
@@ -128,9 +136,10 @@ router.get('/', asyncHandler(async (req, res) => {
   // from raw user input, so this stays injection-safe despite the template
   // literal.
   const sql = `
-    SELECT t.*, c.name AS category_name, c.icon AS category_icon
+    SELECT t.*, c.name AS category_name, c.icon AS category_icon, u.name AS added_by_name
     FROM transactions t
     LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN users u ON u.id = t.user_id
     WHERE ${clauses.join(' AND ')}
     ORDER BY t.${sort} ${dir}
     LIMIT ? OFFSET ?
@@ -318,8 +327,9 @@ router.post(
     );
 
     const row = await queryOne(
-      `SELECT t.*, c.name AS category_name, c.icon AS category_icon
+      `SELECT t.*, c.name AS category_name, c.icon AS category_icon, u.name AS added_by_name
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN users u ON u.id = t.user_id
        WHERE t.id = ?`,
       [inserted.id]
     );
@@ -363,8 +373,9 @@ router.put(
     );
 
     const row = await queryOne(
-      `SELECT t.*, c.name AS category_name, c.icon AS category_icon
+      `SELECT t.*, c.name AS category_name, c.icon AS category_icon, u.name AS added_by_name
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN users u ON u.id = t.user_id
        WHERE t.id = ?`,
       [req.params.id]
     );

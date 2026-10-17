@@ -7,6 +7,7 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Transactions from './pages/Transactions.jsx';
 import Bills from './pages/Bills.jsx';
+import Budgets from './pages/Budgets.jsx';
 import Reports from './pages/Reports.jsx';
 import Profiles from './pages/Profiles.jsx';
 import Settings from './pages/Settings.jsx';
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/bills" element={<Bills />} />
+            <Route path="/budgets" element={<Budgets />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/profiles" element={<Profiles />} />
             <Route path="/settings" element={<Settings />} />

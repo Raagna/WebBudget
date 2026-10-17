@@ -9,6 +9,7 @@ const transactionRoutes = require('./routes/transactions');
 const subscriptionRoutes = require('./routes/subscriptions');
 const billRoutes = require('./routes/bills');
 const dashboardRoutes = require('./routes/dashboard');
+const budgetRoutes = require('./routes/budgets');
 const scanRoutes = require('./routes/scan');
 
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/budgets', budgetRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
