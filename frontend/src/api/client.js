@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+// Dev uses Vite's /api proxy (see vite.config.js); builds use VITE_API_URL.
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '/api' : 'http://localhost:4000/api');
 
 const client = axios.create({ baseURL: BASE_URL });
 
