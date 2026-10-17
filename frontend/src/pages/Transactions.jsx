@@ -220,7 +220,12 @@ export default function Transactions() {
             style={{ display: 'none' }}
             onChange={handleFileSelected}
           />
-          <button className="btn btn-secondary" onClick={triggerImport} disabled={importBusy}>
+          <button
+            className="btn btn-secondary"
+            onClick={triggerImport}
+            disabled={importBusy}
+            title="This app's CSV export, or a TD EasyWeb download (accountactivity.csv). Rows already imported are skipped."
+          >
             {importBusy ? 'Importing…' : 'Import CSV'}
           </button>
           <button className="btn btn-secondary" onClick={handleExport} disabled={exportBusy || total === 0}>
@@ -241,9 +246,12 @@ export default function Transactions() {
               ) : (
                 <>
                   <p style={{ margin: 0 }}>
-                    Imported <strong>{importResult.imported}</strong> of {importResult.totalRows} row{importResult.totalRows === 1 ? '' : 's'}.
+                    Imported <strong>{importResult.imported}</strong> of {importResult.totalRows} row{importResult.totalRows === 1 ? '' : 's'}
+                    {importResult.format === 'td' && ' from a TD bank file'}.
+                    {importResult.duplicates > 0 && ` ${importResult.duplicates} skipped as already imported.`}
+                    {importResult.autoCategorized > 0 && ` ${importResult.autoCategorized} auto-categorized.`}
                     {importResult.warnings.length > 0 && ` ${importResult.warnings.length} warning${importResult.warnings.length === 1 ? '' : 's'}.`}
-                    {importResult.errors.length > 0 && ` ${importResult.errors.length} skipped.`}
+                    {importResult.errors.length > 0 && ` ${importResult.errors.length} skipped with errors.`}
                   </p>
                   {(importResult.warnings.length > 0 || importResult.errors.length > 0) && (
                     <ul style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8, paddingLeft: 18 }}>

@@ -3,6 +3,7 @@ const { query, queryOne, run, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { parseCsv, generateCsv, unneutralize } = require('../utils/csv');
+const { detectFormat, parseBankRows, assignImportHashes, merchantKey, guessCategory } = require('../utils/bankImport');
 const {
   isNonEmptyString,
   isValidDate,
@@ -204,17 +205,19 @@ router.post(
     const profileId = await requireOwnedProfile(req, res, req.body.profileId);
     if (profileId === null) return;
 
-    const rows = parseCsv(req.body.csv);
+    // Spreadsheet apps on Windows often save with a byte-order mark, which
+    // would otherwise stick to the first header (or TD's first date).
+    const rows = parseCsv(req.body.csv.replace(/^﻿/, ''));
     if (rows.length === 0) {
       return res.status(400).json({ error: 'The file is empty' });
     }
 
-    const header = rows[0].map((h) => h.trim().toLowerCase());
-    const colIndex = {};
-    for (const col of CSV_COLUMNS) colIndex[col] = header.indexOf(col);
-    if (colIndex.date === -1 || colIndex.type === -1 || colIndex.amount === -1) {
+    const detected = detectFormat(rows);
+    if (!detected) {
       return res.status(400).json({
-        error: `Missing required column(s). Expected a header row with at least: date, type, amount. Found: ${header.join(', ')}`,
+        error: 'Unrecognized file format. Expected either this app\'s export (a header row with at least: date, type, amount) '
+          + 'or a TD bank download (date, description, withdrawal, deposit, balance). '
+          + `First row: ${rows[0].join(', ')}`,
       });
     }
 
@@ -230,63 +233,150 @@ router.post(
     );
     const categoryByName = new Map(visibleCategories.map((c) => [c.name.toLowerCase(), c.id]));
 
-    const toInsert = [];
-    const errors = [];
+    let records;
+    let errors;
     const warnings = [];
 
-    // Pass 1: validate every row without touching the database. Rows with
-    // problems are skipped and reported, the same as before.
-    for (let i = 1; i < rows.length; i++) {
-      const raw = rows[i];
-      if (raw.length === 1 && raw[0].trim() === '') continue; // blank line
-      const rowNum = i + 1; // 1-based, matches what a spreadsheet would show
-
-      const date = (raw[colIndex.date] || '').trim();
-      const type = (raw[colIndex.type] || '').trim().toLowerCase();
-      // unneutralize: strip the apostrophe our own export adds in front of
-      // text that looks like a spreadsheet formula (see utils/csv.js).
-      const description = colIndex.description >= 0 ? unneutralize((raw[colIndex.description] || '').trim()) : '';
-      const categoryName = colIndex.category >= 0 ? unneutralize((raw[colIndex.category] || '').trim()) : '';
-      const amountStr = (raw[colIndex.amount] || '').trim();
-      const recurringStr = colIndex.recurring >= 0 ? (raw[colIndex.recurring] || '').trim().toLowerCase() : '';
-      const intervalStr = colIndex.recurring_interval >= 0 ? (raw[colIndex.recurring_interval] || '').trim().toLowerCase() : '';
-
-      if (!isValidDate(date)) { errors.push({ row: rowNum, reason: `Invalid date "${date}" (expected YYYY-MM-DD)` }); continue; }
-      if (type !== 'income' && type !== 'expense') { errors.push({ row: rowNum, reason: `Invalid type "${type}" (expected income or expense)` }); continue; }
-      const amount = Number(amountStr);
-      if (!isPositiveAmount(amount)) { errors.push({ row: rowNum, reason: `Invalid amount "${amountStr}"` }); continue; }
-
-      let categoryId = null;
-      if (categoryName) {
-        categoryId = categoryByName.get(categoryName.toLowerCase()) || null;
-        if (categoryId === null) {
-          warnings.push({ row: rowNum, reason: `Category "${categoryName}" not found - imported as Uncategorized` });
-        }
-      }
-
-      const recurring = recurringStr === 'true' || recurringStr === 'yes' || recurringStr === '1';
-      const interval = recurring && ['weekly', 'monthly', 'yearly'].includes(intervalStr) ? intervalStr : null;
-
-      toInsert.push([req.userId, profileId, categoryId, toCents(amount), type, description.slice(0, 255), date, recurring, interval]);
+    if (detected.format === 'td') {
+      ({ records, errors } = parseBankRows(rows, detected));
+    } else {
+      ({ records, errors } = parseAppRows(rows, detected.header, categoryByName, warnings));
     }
 
-    // Pass 2: insert all valid rows in ONE database transaction. If any
-    // insert fails, none are kept, so a failed import never leaves half a
-    // file behind that a retry would then duplicate.
-    await withTransaction(async (tx) => {
-      for (const values of toInsert) {
-        await tx.run(
-          `INSERT INTO transactions
-             (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          values
-        );
+    // Duplicates: anything this profile has already imported (an
+    // overlapping bank download, or the same file twice) is skipped and
+    // reported rather than inserted again.
+    assignImportHashes(profileId, records);
+    const existing = records.length === 0 ? [] : await query(
+      `SELECT import_hash FROM transactions WHERE profile_id = ? AND import_hash = ANY(?)`,
+      [profileId, records.map((r) => r.importHash)]
+    );
+    const existingHashes = new Set(existing.map((r) => r.import_hash));
+    const duplicates = records.filter((r) => existingHashes.has(r.importHash)).map((r) => r.rowNum);
+    const toInsert = records.filter((r) => !existingHashes.has(r.importHash));
+
+    // Auto-categorize bank rows (they never carry a category): first from
+    // how this profile categorized the same merchant before, then from
+    // description keywords. App-format files say their category
+    // explicitly, so a blank there stays blank.
+    let autoCategorized = 0;
+    if (toInsert.some((r) => r.autoCategorize)) {
+      const usable = await query(
+        `SELECT c.id, c.name FROM categories c
+         WHERE (c.user_id IS NULL OR c.user_id = ?)
+           AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = ? AND h.category_id = c.id)`,
+        [req.userId, req.userId]
+      );
+      const usableIds = new Set(usable.map((c) => c.id));
+      const past = await query(
+        `SELECT description, type, category_id FROM transactions
+         WHERE profile_id = ? AND category_id IS NOT NULL
+         ORDER BY occurred_on DESC, id DESC
+         LIMIT 5000`,
+        [profileId]
+      );
+      const history = new Map();
+      for (const t of past) {
+        // A shared profile can hold another member's custom categories,
+        // which this user can't see or pick - don't hand those out.
+        if (!usableIds.has(t.category_id)) continue;
+        const key = `${t.type}|${merchantKey(t.description)}`;
+        if (!history.has(key)) history.set(key, t.category_id); // newest first
       }
+      const byName = new Map(usable.map((c) => [c.name.toLowerCase(), c.id]));
+      for (const r of toInsert) {
+        if (!r.autoCategorize || r.categoryId) continue;
+        r.categoryId = guessCategory(r, { history, byName });
+        if (r.categoryId) autoCategorized++;
+      }
+    }
+
+    // Insert all new rows in ONE database transaction. If any insert
+    // fails, none are kept, so a failed import never leaves half a file
+    // behind that a retry would then duplicate. ON CONFLICT covers the
+    // same file being imported twice at once: the second copy's rows are
+    // counted as duplicates instead of failing the whole import.
+    const inserted = await withTransaction(async (tx) => {
+      let n = 0;
+      for (const r of toInsert) {
+        const result = await tx.run(
+          `INSERT INTO transactions
+             (user_id, profile_id, category_id, amount_cents, type, description, occurred_on, is_recurring, recurring_interval, import_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (profile_id, import_hash) WHERE import_hash IS NOT NULL DO NOTHING`,
+          [req.userId, profileId, r.categoryId, r.amountCents, r.type, r.description, r.date, r.recurring, r.interval, r.importHash]
+        );
+        n += result.rowCount;
+      }
+      return n;
     });
 
-    res.json({ imported: toInsert.length, errors, warnings, totalRows: rows.length - 1 });
+    res.json({
+      format: detected.format,
+      imported: inserted,
+      duplicates: duplicates.length + (toInsert.length - inserted),
+      duplicateRows: duplicates,
+      autoCategorized,
+      errors,
+      warnings,
+      totalRows: rows.length - (detected.format === 'td' && !detected.hasHeader ? 0 : 1),
+    });
   })
 );
+
+// Validates rows in this app's own export format (see CSV_COLUMNS) into
+// the shared record shape. Rows with problems are skipped and reported.
+function parseAppRows(rows, header, categoryByName, warnings) {
+  const colIndex = {};
+  for (const col of CSV_COLUMNS) colIndex[col] = header.indexOf(col);
+
+  const records = [];
+  const errors = [];
+  for (let i = 1; i < rows.length; i++) {
+    const raw = rows[i];
+    if (raw.length === 1 && raw[0].trim() === '') continue; // blank line
+    const rowNum = i + 1; // 1-based, matches what a spreadsheet would show
+
+    const date = (raw[colIndex.date] || '').trim();
+    const type = (raw[colIndex.type] || '').trim().toLowerCase();
+    // unneutralize: strip the apostrophe our own export adds in front of
+    // text that looks like a spreadsheet formula (see utils/csv.js).
+    const description = colIndex.description >= 0 ? unneutralize((raw[colIndex.description] || '').trim()) : '';
+    const categoryName = colIndex.category >= 0 ? unneutralize((raw[colIndex.category] || '').trim()) : '';
+    const amountStr = (raw[colIndex.amount] || '').trim();
+    const recurringStr = colIndex.recurring >= 0 ? (raw[colIndex.recurring] || '').trim().toLowerCase() : '';
+    const intervalStr = colIndex.recurring_interval >= 0 ? (raw[colIndex.recurring_interval] || '').trim().toLowerCase() : '';
+
+    if (!isValidDate(date)) { errors.push({ row: rowNum, reason: `Invalid date "${date}" (expected YYYY-MM-DD)` }); continue; }
+    if (type !== 'income' && type !== 'expense') { errors.push({ row: rowNum, reason: `Invalid type "${type}" (expected income or expense)` }); continue; }
+    const amount = Number(amountStr);
+    if (!isPositiveAmount(amount)) { errors.push({ row: rowNum, reason: `Invalid amount "${amountStr}"` }); continue; }
+
+    let categoryId = null;
+    if (categoryName) {
+      categoryId = categoryByName.get(categoryName.toLowerCase()) || null;
+      if (categoryId === null) {
+        warnings.push({ row: rowNum, reason: `Category "${categoryName}" not found - imported as Uncategorized` });
+      }
+    }
+
+    const recurring = recurringStr === 'true' || recurringStr === 'yes' || recurringStr === '1';
+    const interval = recurring && ['weekly', 'monthly', 'yearly'].includes(intervalStr) ? intervalStr : null;
+
+    records.push({
+      rowNum,
+      date,
+      type,
+      description: description.slice(0, 255),
+      amountCents: toCents(amount),
+      categoryId,
+      recurring,
+      interval,
+      autoCategorize: false,
+    });
+  }
+  return { records, errors };
+}
 
 router.post(
   '/',

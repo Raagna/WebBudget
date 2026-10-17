@@ -167,7 +167,7 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 | POST | `/api/profiles/:id/members/:userId/demote` | Demote a co-owner back to member (owner only) — blocked if they're the last remaining active owner |
 | GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` — shows the whole shared ledger, not just what the requester personally entered |
 | GET | `/api/transactions/export?profileId=&...` | Download every transaction matching the same filters as the list above as a CSV file (no pagination — the full matching set) |
-| POST | `/api/transactions/import` | Import transactions from CSV text: `{ profileId, csv }` — returns `{ imported, errors: [{row, reason}], warnings: [{row, reason}], totalRows }`; an unrecognized category name doesn't fail the row, it imports as Uncategorized with a warning |
+| POST | `/api/transactions/import` | Import transactions from CSV text: `{ profileId, csv }` — accepts this app's export or a TD EasyWeb download; returns `{ format, imported, duplicates, duplicateRows, autoCategorized, errors: [{row, reason}], warnings: [{row, reason}], totalRows }`; rows already imported into the profile are skipped as duplicates; an unrecognized category name doesn't fail the row, it imports as Uncategorized with a warning |
 | POST | `/api/transactions` | Create — body includes `profileId` |
 | PUT | `/api/transactions/:id` | Update — any active member of the transaction's profile can edit it, not just whoever created it |
 | DELETE | `/api/transactions/:id` | Delete — same access rule as update |
@@ -287,6 +287,15 @@ which is what was letting a long email push into the button).
   as Uncategorized with a warning rather than failing it outright). Import
   reports exactly which rows succeeded, which were skipped and why, and
   which imported with a caveat.
+- **TD bank import**: the same Import button takes the CSV TD EasyWeb
+  downloads (Account Activity → Download → Spreadsheet, `accountactivity.csv`:
+  no header; date, description, withdrawal, deposit, balance). Withdrawals
+  become expenses and deposits income. Every imported row stores a hash of
+  profile + date + type + amount + description (`import_hash`, migration
+  007), so importing an overlapping download again skips the rows already
+  there and reports them as duplicates. Bank rows are auto-categorized from
+  how the profile categorized the same merchant before, falling back to
+  description keywords (`backend/utils/bankImport.js`).
 - **Multi-select bulk actions**: check multiple transactions in the ledger
   to bulk-delete them or bulk-reassign their category in one action.
   **Shift+click** a checkbox to select every row between it and your last
@@ -398,6 +407,7 @@ finance-app/
     middleware/        auth.js, validate.js, asyncHandler.js
     routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
     utils/csv.js       dependency-free CSV parse/generate for import/export
+    utils/bankImport.js  bank CSV detection/parsing (TD), import duplicate hashes, auto-categorization
     server.js
     seed.js
     package.json
