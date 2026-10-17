@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { APP_NAME } from '../brand.js';
 
 export default function Register() {
   const { register } = useAuth();
@@ -32,6 +33,7 @@ export default function Register() {
   return (
     <div className="auth-shell">
       <div className="card auth-card">
+        <div className="auth-brand"><span className="brand-mark" aria-hidden="true" />{APP_NAME}</div>
         <h1>Open a ledger</h1>
         <p className="subtitle">Track income, expenses, and bills in one place.</p>
         {error && <div className="auth-error">{error}</div>}

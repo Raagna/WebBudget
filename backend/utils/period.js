@@ -34,4 +34,17 @@ function daysLeftInMonth(today) {
   return Math.round((Date.parse(end) - Date.parse(today)) / 86_400_000) + 1;
 }
 
-module.exports = { userToday, monthBounds, monthPeriod, daysLeftInMonth };
+// The same stretch of the previous month: if today is Oct 17, that's
+// Sep 1..Sep 17. Comparing month-to-date with ALL of last month would
+// always make the current month look thrifty, so changes are measured
+// against this window. A short previous month is clamped (Mar 31 → Feb 28).
+function sameStretchLastMonth(today) {
+  const [y, m, d] = today.split('-').map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const { start, end: prevEnd } = monthBounds(prev);
+  const lastDay = Number(prevEnd.slice(8));
+  const end = `${prev}-${String(Math.min(d, lastDay)).padStart(2, '0')}`;
+  return { start, end };
+}
+
+module.exports = { userToday, monthBounds, monthPeriod, daysLeftInMonth, sameStretchLastMonth };

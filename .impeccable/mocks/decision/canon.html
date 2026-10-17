@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:Manrope,sans-serif;background:#F8FAFC;color:#0F172A}
+.wrap{display:grid;grid-template-columns:240px 1fr;height:900px}
+.rail{background:#fff;border-right:1px solid #E2E8F0;padding:24px 14px}.brand{font:800 22px Manrope;padding:0 12px 22px;color:#4F46E5}
+.rail a{display:block;padding:10px 12px;border-radius:8px;font:600 15px Manrope;color:#475569}.rail a.on{background:#EEF2FF;color:#4F46E5}
+main{padding:30px 36px;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;align-content:start}
+h1{grid-column:1/-1;font:800 28px Manrope}
+.k{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px}.k .l{font:600 13px Manrope;color:#64748B}.k .v{font:800 30px Manrope;margin-top:8px}
+.chart{grid-column:span 3;background:#fff;border:1px solid #E2E8F0;border-radius:14px;height:300px;padding:18px}
+.bud{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px}
+.b{margin:12px 0}.b .r{display:flex;justify-content:space-between;font:600 14px Manrope}.bar{height:8px;border-radius:4px;background:#EEF2FF;margin-top:6px}.bar i{display:block;height:100%;border-radius:4px;background:#4F46E5}
+.list{grid-column:1/-1;background:#fff;border:1px solid #E2E8F0;border-radius:14px}
+table{width:100%;border-collapse:collapse;font:500 15px Manrope}td{padding:12px 20px;border-bottom:1px solid #F1F5F9}td.a{text-align:right;font-weight:700}
+</style></head><body>
+<div class="wrap">
+<nav class="rail"><div class="brand">Ledger</div><a class="on">Dashboard</a><a>Transactions</a><a>Budgets</a><a>Bills</a><a>Reports</a><a>Profiles</a><a>Settings</a></nav>
+<main>
+<h1>Good evening</h1>
+<div class="k"><div class="l">Income</div><div class="v">$3,500.00</div></div>
+<div class="k"><div class="l">Spent</div><div class="v">$1,486.20</div></div>
+<div class="k"><div class="l">Safe to spend</div><div class="v" style="color:#047857">$1,255.88</div></div>
+<div class="k"><div class="l">Bills due</div><div class="v">$144.12</div></div>
+<div class="chart"><div class="l" style="font:700 15px Manrope">Spending this month</div></div>
+<div class="bud"><div style="font:700 15px Manrope">Budgets</div>
+<div class="b"><div class="r"><span>Groceries</span><span>$412 / $600</span></div><div class="bar"><i style="width:69%"></i></div></div>
+<div class="b"><div class="r"><span>Eating out</span><span>$188 / $150</span></div><div class="bar"><i style="width:100%;background:#EF4444"></i></div></div>
+<div class="b"><div class="r"><span>Transport</span><span>$96 / $200</span></div><div class="bar"><i style="width:48%"></i></div></div></div>
+<div class="list"><table>
+<tr><td>Oct 15</td><td>Loblaws</td><td>Groceries</td><td class="a">−$86.42</td></tr>
+<tr><td>Oct 14</td><td>Payroll deposit</td><td>Income</td><td class="a">+$2,100.00</td></tr>
+</table></div>
+</main></div>
+</body></html>

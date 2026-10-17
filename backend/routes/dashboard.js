@@ -3,7 +3,7 @@ const { query, queryOne } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { fromCents } = require('../middleware/validate');
-const { userToday, monthPeriod, daysLeftInMonth } = require('../utils/period');
+const { userToday, monthPeriod, daysLeftInMonth, sameStretchLastMonth } = require('../utils/period');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -52,6 +52,23 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const income = fromCents(Number(totals.find((t) => t.type === 'income')?.total || 0));
   const expenses = fromCents(Number(totals.find((t) => t.type === 'expense')?.total || 0));
 
+  // The same stretch of last month (1st..same day), so the page can say
+  // "€120 more than this point last month" fairly.
+  const last = sameStretchLastMonth(end);
+  const lastTotals = await query(
+    `SELECT type, COALESCE(SUM(amount_cents), 0)::bigint AS total
+     FROM transactions
+     WHERE profile_id = ? AND occurred_on BETWEEN ? AND ?
+     GROUP BY type`,
+    [profileId, last.start, last.end]
+  );
+  const lastMonthToDate = {
+    from: last.start,
+    to: last.end,
+    income: fromCents(Number(lastTotals.find((t) => t.type === 'income')?.total || 0)),
+    expenses: fromCents(Number(lastTotals.find((t) => t.type === 'expense')?.total || 0)),
+  };
+
   const byCategoryRows = await query(
     `SELECT c.name AS category, COALESCE(SUM(t.amount_cents), 0)::bigint AS total
      FROM transactions t
@@ -85,6 +102,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
     income,
     expenses,
     net: Math.round((income - expenses) * 100) / 100,
+    lastMonthToDate,
     largestCategory: byCategory[0]?.category || null,
     spendingByCategory: byCategory,
     recentTransactions: recent,

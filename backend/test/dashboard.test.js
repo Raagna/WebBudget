@@ -84,6 +84,23 @@ test('safe to spend can go negative, and is only given for the current month', a
   assert.equal(past.body.safeToSpend, null);
 });
 
+test('the comparison with last month covers the same stretch of days, not the whole month', async () => {
+  const u = await newUser(api, 'Compare');
+  await addTransaction(api, u.token, u.profileId, { amount: 100, date: '2026-09-05' }); // inside Sep 1..17
+  await addTransaction(api, u.token, u.profileId, { amount: 900, date: '2026-09-25' }); // after the 17th: not compared
+  await addTransaction(api, u.token, u.profileId, { amount: 60, date: '2026-10-03' });
+  const res = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-10-17`, { token: u.token });
+  assert.deepEqual(res.body.lastMonthToDate, { from: '2026-09-01', to: '2026-09-17', income: 0, expenses: 100 });
+});
+
+test('a short previous month is clamped: Mar 31 compares with Feb 1..28', async () => {
+  const u = await newUser(api, 'Clamp');
+  const res = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-03-31`, { token: u.token });
+  assert.equal(res.body.lastMonthToDate.to, '2026-02-28');
+  const jan = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-01-10`, { token: u.token });
+  assert.equal(jan.body.lastMonthToDate.from, '2025-12-01', 'January compares with December of the year before');
+});
+
 test('an invalid today falls back to the server date instead of erroring', async () => {
   const u = await newUser(api, 'Fallback');
   const res = await api('GET', `/dashboard/summary?profileId=${u.profileId}&today=2026-02-31`, { token: u.token });

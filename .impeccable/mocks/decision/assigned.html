@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:Barlow,sans-serif;background:#F4F1E6;color:#16140F}
+.top{height:64px;background:#FFD23F;display:flex;align-items:center;padding:0 28px;gap:28px;border-bottom:3px solid #16140F}
+.brand{font:800 30px/1 'Barlow Condensed';letter-spacing:.01em;text-transform:uppercase}
+.prof{font:600 14px Barlow;background:#16140F;color:#FFD23F;padding:7px 12px;border-radius:3px}
+.top .sp{flex:1}.add{font:700 15px Barlow;background:#16140F;color:#fff;padding:10px 18px;border-radius:3px}
+.wrap{display:grid;grid-template-columns:220px 1fr;height:836px}
+.rail{background:#FFD23F;padding:22px 0;border-right:3px solid #16140F}
+.rail a{display:block;padding:11px 28px;font:600 16px Barlow;color:#16140F}
+.rail a.on{background:#16140F;color:#FFD23F}
+main{padding:28px 36px;display:grid;grid-template-columns:repeat(12,1fr);gap:20px;align-content:start}
+h1{grid-column:1/-1;font:800 44px/1 'Barlow Condensed';text-transform:uppercase}
+h1 small{font:500 15px Barlow;text-transform:none;color:#5b574c;margin-left:12px}
+.tag{grid-column:span 5;background:#FFD23F;border:3px solid #16140F;position:relative;padding:22px 26px 20px}
+.tag:before{content:'';position:absolute;right:22px;top:18px;width:14px;height:14px;border-radius:50%;background:#F4F1E6;border:3px solid #16140F}
+.lbl{font:700 14px Barlow;text-transform:uppercase;letter-spacing:.08em}
+.price{font:800 150px/.9 'Barlow Condensed';letter-spacing:-.02em;display:flex;align-items:flex-start;margin-top:8px}
+.price .d{font-size:64px;margin-top:14px}.price sup{font-size:62px;margin-top:12px}
+.per{display:flex;gap:16px;align-items:baseline;border-top:3px solid #16140F;margin-top:14px;padding-top:12px;font:600 17px Barlow}
+.per b{font:800 40px 'Barlow Condensed'}
+.delta{font:600 14px Barlow;color:#5b574c}
+.side{grid-column:span 7;display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.bt{background:#fff;border-top:6px solid #16140F;padding:14px 16px}
+.bt.over{border-top-color:#D62828}
+.bt .row{display:flex;justify-content:space-between;align-items:baseline}
+.bt .nm{font:700 17px Barlow}.bt .fig{font:800 40px/1 'Barlow Condensed'}
+.bt .fig small{font:600 16px Barlow;color:#5b574c}
+.bar{height:10px;background:#E7E2D2;margin:10px 0 6px}.bar i{display:block;height:100%;background:#16140F}
+.over .bar i{background:#D62828}.over .fig{color:#D62828}
+.bt .sub{font:500 13px Barlow;color:#5b574c}
+.list{grid-column:1/-1;background:#fff}
+.lh{display:flex;justify-content:space-between;padding:14px 18px;border-bottom:3px solid #16140F;font:800 22px 'Barlow Condensed';text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font:500 15px Barlow}
+td{padding:11px 18px;border-bottom:1px solid #E7E2D2}
+td.a{text-align:right;font:700 20px 'Barlow Condensed'}td.inc{color:#0B6E4F}
+.chip{font:600 12px Barlow;background:#F4F1E6;padding:3px 8px;border-radius:2px}
+.who{color:#5b574c;font-size:13px}
+</style></head><body>
+<div class="top"><div class="brand">Ledger</div><div class="prof">Household ▾</div><div class="sp"></div><div class="add">+ Add / Scan</div></div>
+<div class="wrap">
+<nav class="rail"><a class="on">Dashboard</a><a>Transactions</a><a>Budgets</a><a>Bills</a><a>Reports</a><a>Profiles</a><a>Settings</a></nav>
+<main>
+<h1>October<small>Household · 17 days left</small></h1>
+<section class="tag">
+<div class="lbl">Safe to spend</div>
+<div class="price"><span class="d">$</span>1,255<sup>88</sup></div>
+<div class="per"><b>$73.87</b> a day for 17 days <span class="delta">▲ $212 vs Sept</span></div>
+</section>
+<section class="side">
+<div class="bt"><div class="row"><span class="nm">Groceries</span><span class="fig">$188 <small>left</small></span></div><div class="bar"><i style="width:69%"></i></div><div class="sub">$412 of $600 · 69%</div></div>
+<div class="bt over"><div class="row"><span class="nm">Eating out</span><span class="fig">$38 <small>over</small></span></div><div class="bar"><i style="width:100%"></i></div><div class="sub">$188 of $150 · 125%</div></div>
+<div class="bt"><div class="row"><span class="nm">Transport</span><span class="fig">$104 <small>left</small></span></div><div class="bar"><i style="width:48%"></i></div><div class="sub">$96 of $200 · 48%</div></div>
+<div class="bt"><div class="row"><span class="nm">Bills due</span><span class="fig">$144 <small>owed</small></span></div><div class="bar"><i style="width:30%"></i></div><div class="sub">Hydro Oct 23 · Phone overdue</div></div>
+</section>
+<section class="list">
+<div class="lh"><span>Recent</span><span style="font:600 14px Barlow;text-transform:none">See all</span></div>
+<table>
+<tr><td>Oct 15</td><td>Loblaws</td><td><span class="chip">Groceries</span></td><td class="who">Sam</td><td class="a">−$86.42</td></tr>
+<tr><td>Oct 14</td><td>Payroll deposit</td><td><span class="chip">Income</span></td><td class="who">You</td><td class="a inc">+$2,100.00</td></tr>
+<tr><td>Oct 12</td><td>Tim Hortons</td><td><span class="chip">Eating out</span></td><td class="who">You</td><td class="a">−$4.25</td></tr>
+</table>
+</section>
+</main></div>
+</body></html>

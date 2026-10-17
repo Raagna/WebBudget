@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Public Sans',sans-serif;background:#F5F5F2;color:#111}
+.wrap{display:grid;grid-template-columns:220px 1fr;height:900px}
+.rail{background:#111;color:#ddd;padding:24px 0}.brand{font:800 22px 'Public Sans';color:#FFB000;padding:0 24px 20px}
+.rail a{display:block;padding:10px 24px;font:500 15px 'Public Sans'}.rail a.on{color:#111;background:#FFB000}
+main{padding:28px 34px;display:grid;grid-template-columns:repeat(12,1fr);gap:20px;align-content:start}
+.pass{grid-column:span 5;background:#fff;border-radius:10px;display:grid;grid-template-columns:1fr 130px;overflow:hidden;border:1px solid #ddd}
+.pass .m{padding:22px}.pass .stub{border-left:2px dashed #ccc;padding:22px 14px;background:#FAFAF7}
+.lbl{font:700 11px 'Public Sans';letter-spacing:.12em;text-transform:uppercase;color:#777}
+.big{font:800 64px/1 'Public Sans';margin:10px 0}.mono{font:700 15px 'JetBrains Mono'}
+.board{grid-column:span 7;background:#111;color:#F5F5F2;border-radius:10px;padding:18px 20px}
+.board table{width:100%;border-collapse:collapse;font:500 16px 'JetBrains Mono'}
+.board th{text-align:left;font:700 11px 'Public Sans';letter-spacing:.12em;color:#999;padding:6px 8px}
+.board td{padding:11px 8px;border-top:1px solid #2a2a2a}
+.flag{background:#FFB000;color:#111;padding:2px 8px;font-weight:700}.late{color:#ff6b6b}
+.list{grid-column:1/-1;background:#fff;border-radius:10px;border:1px solid #ddd}
+.list table{width:100%;border-collapse:collapse;font:500 15px 'Public Sans'}.list td{padding:12px 20px;border-bottom:1px solid #eee}.list td.a{text-align:right;font:700 15px 'JetBrains Mono'}
+</style></head><body>
+<div class="wrap">
+<nav class="rail"><div class="brand">Ledger</div><a class="on">Dashboard</a><a>Transactions</a><a>Budgets</a><a>Bills</a><a>Reports</a><a>Profiles</a></nav>
+<main>
+<section class="pass"><div class="m"><div class="lbl">Safe to spend · October</div><div class="big">$1,255.88</div><div class="mono">$73.87 / DAY · 17 DAYS</div></div>
+<div class="stub"><div class="lbl">Household</div><div class="mono" style="margin-top:10px">SEQ 017</div></div></section>
+<section class="board"><table>
+<tr><th>Due</th><th>Bill</th><th>Amount</th><th>Status</th></tr>
+<tr><td class="late">OCT 05</td><td>Phone</td><td>$60.00</td><td class="late">OVERDUE</td></tr>
+<tr><td>OCT 23</td><td>Hydro</td><td>$84.12</td><td><span class="flag">CHANGED</span></td></tr>
+<tr><td>NOV 01</td><td>Rent</td><td>$1,200.00</td><td>ON TIME</td></tr>
+<tr><td>NOV 02</td><td>Insurance</td><td>$150.00</td><td>ON TIME</td></tr>
+</table></section>
+<section class="list"><table>
+<tr><td>Oct 15</td><td>Loblaws</td><td>Groceries</td><td>Sam</td><td class="a">−$86.42</td></tr>
+<tr><td>Oct 14</td><td>Payroll deposit</td><td>Income</td><td>You</td><td class="a">+$2,100.00</td></tr>
+<tr><td>Oct 12</td><td>Tim Hortons</td><td>Eating out</td><td>You</td><td class="a">−$4.25</td></tr>
+</table></section>
+</main></div>
+</body></html>

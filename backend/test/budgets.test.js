@@ -26,7 +26,8 @@ test('a budget shows what has been spent in its category this month, up to today
   await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 120.5, date: '2026-10-03' });
   await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 60, date: '2026-10-12' });
   await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 999, date: '2026-10-25' }); // after "today"
-  await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 75, date: '2026-09-28' }); // last month
+  await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 75, date: '2026-09-28' }); // last month, later than "today"'s day
+  await addTransaction(api, u.token, u.profileId, { categoryId: food, amount: 40, date: '2026-09-10' }); // last month, same stretch
   await addTransaction(api, u.token, u.profileId, { amount: 30, date: '2026-10-05' }); // uncategorized
 
   const res = await api('GET', `/budgets?profileId=${u.profileId}&today=2026-10-15`, { token: u.token });
@@ -39,6 +40,9 @@ test('a budget shows what has been spent in its category this month, up to today
   assert.equal(b.spent, 180.5);
   assert.equal(b.remaining, 219.5);
   assert.equal(b.percent, 45);
+  // Compared with Sep 1..15 only: the Sep 10 purchase counts, Sep 28 does not.
+  assert.equal(b.lastMonthSpent, 40);
+  assert.equal(res.body.totals.lastMonthSpent, 40);
   assert.equal(res.body.totals.unbudgetedSpent, 30);
 });
 

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:Figtree,sans-serif;background:#F7F8F5;color:#1C2321}
+.wrap{display:grid;grid-template-columns:240px 1fr;height:900px}
+.rail{background:#1F3B33;color:#E8F0EC;padding:26px 0}
+.brand{font:800 24px Figtree;padding:0 26px 22px}
+.rail a{display:block;padding:11px 26px;font:500 15px Figtree;color:#DCE9E3}
+.rail a.on{color:#fff;border-left:4px solid #9FE2BF;background:rgba(255,255,255,.06)}
+main{padding:30px 38px;display:grid;grid-template-columns:repeat(12,1fr);gap:20px;align-content:start}
+h1{grid-column:1/-1;font:700 30px Figtree}
+.note{grid-column:span 7;height:300px;border-radius:14px;background:#1F6E46;position:relative;overflow:hidden;color:#fff;padding:28px 30px;
+background-image:repeating-radial-gradient(circle at 85% 30%,rgba(255,255,255,.10) 0 1px,transparent 1px 7px)}
+.win{position:absolute;right:34px;top:34px;width:210px;height:232px;border-radius:12px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.5)}
+.lbl{font:600 14px Figtree;letter-spacing:.08em;text-transform:uppercase;opacity:.9}
+.big{font:800 96px/1 Figtree;margin-top:18px;letter-spacing:-.02em}
+.sub{font:500 18px Figtree;margin-top:14px}
+.strips{grid-column:span 5;display:grid;gap:12px}
+.s{border-radius:10px;padding:14px 16px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+.s b{font:700 22px Figtree}.s span{font:500 14px Figtree;opacity:.9}
+.list{grid-column:1/-1;background:#fff;border-radius:12px;border:1px solid #E1E6E2}
+.lh{padding:16px 20px;font:700 17px Figtree;border-bottom:1px solid #E1E6E2}
+table{width:100%;border-collapse:collapse;font:500 15px Figtree}td{padding:12px 20px;border-bottom:1px solid #EEF1EE}
+td.a{text-align:right;font-weight:700}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+</style></head><body>
+<div class="wrap">
+<nav class="rail"><div class="brand">Ledger</div><a class="on">Dashboard</a><a>Transactions</a><a>Budgets</a><a>Bills</a><a>Reports</a><a>Profiles</a><a>Settings</a></nav>
+<main>
+<h1>October · Household</h1>
+<section class="note"><div class="win"></div>
+<div class="lbl">Safe to spend</div><div class="big">$1,255.88</div><div class="sub">About $73.87 a day for 17 days</div></section>
+<section class="strips">
+<div class="s" style="background:#2B6CB0"><span>Groceries · $412 of $600</span><b>$188 left</b></div>
+<div class="s" style="background:#C23A2E"><span>Eating out · $188 of $150</span><b>$38 over</b></div>
+<div class="s" style="background:#6A4C9C"><span>Transport · $96 of $200</span><b>$104 left</b></div>
+<div class="s" style="background:#8A5A3C"><span>Bills due · Hydro, Phone</span><b>$144 owed</b></div>
+</section>
+<section class="list"><div class="lh">Recent transactions</div>
+<table>
+<tr><td>Oct 15</td><td><span class="dot" style="background:#2B6CB0"></span>Loblaws</td><td>Sam</td><td class="a">−$86.42</td></tr>
+<tr><td>Oct 14</td><td><span class="dot" style="background:#2F8F5B"></span>Payroll deposit</td><td>You</td><td class="a">+$2,100.00</td></tr>
+<tr><td>Oct 12</td><td><span class="dot" style="background:#C23A2E"></span>Tim Hortons</td><td>You</td><td class="a">−$4.25</td></tr>
+</table></section>
+</main></div>
+</body></html>
