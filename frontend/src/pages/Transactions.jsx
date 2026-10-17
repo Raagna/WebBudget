@@ -2,10 +2,16 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import client from '../api/client';
 import TransactionForm from '../components/TransactionForm.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { formatMoney, formatDate, localToday } from '../utils/format.js';
 
 export default function Transactions() {
   const { activeProfileId, activeProfile } = useProfiles();
+  const { user } = useAuth();
+  // In a shared household, show who added each transaction and let the
+  // list be filtered to one member.
+  const isShared = (activeProfile?.member_count || 0) > 1;
+  const [members, setMembers] = useState([]);
   const currency = activeProfile?.currency || 'USD';
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -27,7 +33,7 @@ export default function Transactions() {
 
   // "type" is now a filter/sort dimension rather than a separate page -
   // All / Income / Expense, applied the same way as category or date.
-  const [filters, setFilters] = useState({ type: '', categoryId: '', from: '', to: '', sort: 'occurred_on', dir: 'desc' });
+  const [filters, setFilters] = useState({ type: '', categoryId: '', addedBy: '', from: '', to: '', sort: 'occurred_on', dir: 'desc' });
 
   const load = useCallback(async () => {
     if (!activeProfileId) return;
@@ -35,6 +41,7 @@ export default function Transactions() {
     const params = { profileId: activeProfileId, sort: filters.sort, dir: filters.dir, limit: 100 };
     if (filters.type) params.type = filters.type;
     if (filters.categoryId) params.categoryId = filters.categoryId;
+    if (filters.addedBy) params.addedBy = filters.addedBy;
     if (filters.from) params.from = filters.from;
     if (filters.to) params.to = filters.to;
     const { data } = await client.get('/transactions', { params });
@@ -50,6 +57,16 @@ export default function Transactions() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    setFilters((f) => (f.addedBy ? { ...f, addedBy: '' } : f)); // a member of another household
+    if (!isShared) { setMembers([]); return; }
+    client.get(`/profiles/${activeProfileId}/members`)
+      .then((res) => setMembers(res.data.members.filter((m) => m.status === 'active')))
+      .catch(() => setMembers([]));
+  }, [activeProfileId, isShared]);
+
+  const addedByLabel = (t) => (!t.addedBy ? 'Former member' : t.addedBy.id === user?.id ? 'You' : t.addedBy.name);
+
   // Export respects whatever filters are currently applied (type,
   // category, date range) - clear filters first to export everything, or
   // filter down to export just a subset. Needs to go through axios (not a
@@ -62,6 +79,7 @@ export default function Transactions() {
       const params = { profileId: activeProfileId };
       if (filters.type) params.type = filters.type;
       if (filters.categoryId) params.categoryId = filters.categoryId;
+    if (filters.addedBy) params.addedBy = filters.addedBy;
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
       const res = await client.get('/transactions/export', { params, responseType: 'blob' });
@@ -264,6 +282,15 @@ export default function Transactions() {
             {typeFilteredCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
+        {isShared && (
+          <div className="form-field">
+            <label htmlFor="filter-added-by">Added by</label>
+            <select id="filter-added-by" value={filters.addedBy} onChange={(e) => setFilters({ ...filters, addedBy: e.target.value })}>
+              <option value="">Everyone</option>
+              {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.user_id === user?.id ? 'You' : m.name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="form-field">
           <label>From</label>
           <input type="date" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
@@ -335,6 +362,7 @@ export default function Transactions() {
               <tr>
                 <th className="select-col"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" /></th>
                 <th>Date</th><th>Description</th><th>Category</th><th>Recurring</th>
+                {isShared && <th>Added by</th>}
                 <th style={{ textAlign: 'right' }}>Amount</th><th></th>
               </tr>
             </thead>
@@ -353,6 +381,7 @@ export default function Transactions() {
                   <td className="col-desc">{t.description}</td>
                   <td className="col-cat">{t.categoryName && <span className="tag">{t.categoryName}</span>}</td>
                   <td className="col-rec">{t.isRecurring && <span className="tag recurring">{t.recurringInterval}</span>}</td>
+                  {isShared && <td className="col-by">{addedByLabel(t)}</td>}
                   <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
                   <td className="col-actions">
                     <div style={{ display: 'flex', gap: 6 }}>

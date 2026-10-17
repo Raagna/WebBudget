@@ -2,17 +2,11 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
-const { fromCents, isValidDate } = require('../middleware/validate');
+const { fromCents } = require('../middleware/validate');
+const { userToday, monthPeriod, daysLeftInMonth } = require('../utils/period');
 
 const router = express.Router();
 router.use(requireAuth);
-
-function monthBounds(yyyyMm) {
-  const [y, m] = yyyyMm.split('-').map(Number);
-  const start = `${yyyyMm}-01`;
-  const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // last day of month
-  return { start, end };
-}
 
 // All dashboard figures are scoped to one profile at a time, so switching
 // profiles in the UI shows an entirely separate financial picture. Access
@@ -36,15 +30,6 @@ async function requireOwnedProfile(req, res) {
   return profileId;
 }
 
-// "Today" in the USER's timezone, which the server can't know: the
-// browser sends it as ?today=YYYY-MM-DD. Without it, the server's UTC
-// date is used, which is already tomorrow for North America in the
-// evening - so the dashboard could show next month, or count a
-// transaction dated tomorrow as already spent.
-function userToday(req) {
-  return isValidDate(req.query.today) ? req.query.today : new Date().toISOString().slice(0, 10);
-}
-
 // GET /api/dashboard/summary?profileId=&today=YYYY-MM-DD&month=YYYY-MM
 // month defaults to the month of `today`. Totals, categories and recent
 // transactions only count what has happened up to `today`: a transaction
@@ -54,10 +39,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const profileId = await requireOwnedProfile(req, res);
   if (profileId === null) return;
 
-  const today = userToday(req);
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : today.slice(0, 7);
-  const { start, end: monthEnd } = monthBounds(month);
-  const end = monthEnd < today ? monthEnd : today;
+  const { today, month, start, monthEnd, end } = monthPeriod(req);
 
   const totals = await query(
     `SELECT type, COALESCE(SUM(amount_cents), 0)::bigint AS total
@@ -106,8 +88,57 @@ router.get('/summary', asyncHandler(async (req, res) => {
     largestCategory: byCategory[0]?.category || null,
     spendingByCategory: byCategory,
     recentTransactions: recent,
+    safeToSpend: month === today.slice(0, 7)
+      ? await safeToSpend(profileId, { today, start, monthEnd, incomeCents: Math.round(income * 100), spentCents: Math.round(expenses * 100) })
+      : null, // only meaningful for the month you're in
   });
 }));
+
+// "Safe to spend": what's left this month once money already committed is
+// set aside. Deliberately conservative, so it's safe to act on:
+//   income received so far
+//   - spending so far
+//   - unpaid bills due by the end of the month (including overdue ones)
+//   - expenses already entered with a later date this month (scheduled)
+// Income that hasn't arrived yet is NOT counted. perDay spreads what's
+// left over the days remaining, today included.
+async function safeToSpend(profileId, { today, start, monthEnd, incomeCents, spentCents }) {
+  const bills = await query(
+    `SELECT id, name, amount_cents, due_on FROM bills
+     WHERE profile_id = ? AND is_paid = FALSE AND due_on <= ?
+     ORDER BY due_on ASC, id ASC`,
+    [profileId, monthEnd]
+  );
+  const scheduled = await queryOne(
+    `SELECT COALESCE(SUM(amount_cents), 0)::bigint AS cents, COUNT(*)::int AS n
+     FROM transactions
+     WHERE profile_id = ? AND type = 'expense' AND occurred_on > ? AND occurred_on BETWEEN ? AND ?`,
+    [profileId, today, start, monthEnd]
+  );
+
+  const billsCents = bills.reduce((s, b) => s + Number(b.amount_cents), 0);
+  const scheduledCents = Number(scheduled.cents);
+  const safeCents = incomeCents - spentCents - billsCents - scheduledCents;
+  const daysLeft = daysLeftInMonth(today);
+
+  return {
+    amount: fromCents(safeCents), // negative = already committed more than came in
+    income: fromCents(incomeCents),
+    spent: fromCents(spentCents),
+    billsDue: fromCents(billsCents),
+    scheduled: fromCents(scheduledCents),
+    scheduledCount: scheduled.n,
+    daysLeft,
+    perDay: fromCents(Math.max(0, Math.floor(safeCents / daysLeft))),
+    upcomingBills: bills.slice(0, 5).map((b) => ({
+      id: b.id,
+      name: b.name,
+      amount: fromCents(Number(b.amount_cents)),
+      dueOn: b.due_on,
+      overdue: b.due_on < today,
+    })),
+  };
+}
 
 // GET /api/dashboard/trends?profileId=&months=6  -> income vs expenses per month
 router.get('/trends', asyncHandler(async (req, res) => {

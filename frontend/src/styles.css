@@ -275,6 +275,7 @@ table.ledger input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer
    pushing the whole page sideways. */
 .table-scroll { overflow-x: auto; }
 table.ledger td.bill-status { white-space: nowrap; }
+table.ledger td.col-by { color: var(--ink-soft); font-size: 12.5px; white-space: nowrap; }
 .due { font-size: 12px; color: var(--ink-soft); }
 .due.overdue { color: var(--brick); font-weight: 600; }
 table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background: var(--pine-soft); }
@@ -353,6 +354,38 @@ table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background:
   .form-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- Budgets ---------- */
+
+.budget-list { list-style: none; margin: 0; padding: 0; }
+.budget-list > li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.budget-list > li:first-child { padding-top: 0; }
+.budget-list > li:last-child { border-bottom: none; padding-bottom: 0; }
+.budget-bar-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.budget-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.budget-left { font-family: var(--font-mono); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.budget-left.ok { color: var(--pine); }
+.budget-left.warn { color: #8a6a20; } /* darker than --gold so it passes text contrast */
+.budget-left.over { color: var(--brick); }
+.progress { height: 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin: 8px 0 6px; }
+.progress > span { display: block; height: 100%; border-radius: 999px; }
+.progress > span.ok { background: var(--pine); }
+.progress > span.warn { background: var(--gold); }
+.progress > span.over { background: var(--brick); }
+.budget-sub { font-size: 12px; color: var(--ink-soft); font-family: var(--font-mono); }
+.budget-pace { font-size: 12px; color: #8a6a20; margin-top: 4px; font-weight: 600; }
+.budget-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.budget-actions input { width: 120px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; }
+.budget-bar.compact + .budget-bar.compact { margin-top: 12px; }
+
+/* Safe-to-spend breakdown on the dashboard */
+.safe-breakdown { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.safe-breakdown li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.safe-breakdown li:last-child { border-bottom: none; font-weight: 600; }
+.safe-breakdown .amount { font-family: var(--font-mono); white-space: nowrap; }
+.upcoming-bills { list-style: none; margin: 12px 0 0; padding: 0; font-size: 12.5px; }
+.upcoming-bills li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; color: var(--ink-soft); }
+.upcoming-bills li.overdue { color: var(--brick); }
+
 /* ---------- Phones: money tables become two-line rows ----------
    A 7-column ledger can't fit in a ~340px card, and it used to spill out
    of the card and make the whole page scroll sideways. Tables marked
@@ -392,6 +425,7 @@ table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background:
   table.ledger.stack td.col-date { order: 4; font-size: 12px; color: var(--ink-soft); }
   table.ledger.stack td.col-cat { order: 5; }
   table.ledger.stack td.col-rec { order: 6; }
+  table.ledger.stack td.col-by { order: 6; font-size: 12px; color: var(--ink-soft); }
   table.ledger.stack td.col-status { order: 7; font-size: 12px; }
   table.ledger.stack td.col-actions { order: 8; margin-left: auto; }
 

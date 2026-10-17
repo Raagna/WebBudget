@@ -6,6 +6,7 @@ import { useProfiles } from '../context/ProfileContext.jsx';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/transactions', label: 'Transactions' },
+  { to: '/budgets', label: 'Budgets' },
   { to: '/bills', label: 'Bills' },
   { to: '/reports', label: 'Reports' },
   { to: '/profiles', label: 'Profiles' },

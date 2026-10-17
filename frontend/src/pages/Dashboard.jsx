@@ -4,7 +4,9 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import client from '../api/client';
+import { Link } from 'react-router-dom';
 import StatCard from '../components/StatCard.jsx';
+import BudgetBar from '../components/BudgetBar.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate, localToday } from '../utils/format.js';
 import { CURRENCIES } from '../utils/currencies.js';
@@ -15,6 +17,7 @@ export default function Dashboard() {
   const { activeProfileId, activeProfile } = useProfiles();
   const [summary, setSummary] = useState(null);
   const [trends, setTrends] = useState([]);
+  const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -24,13 +27,16 @@ export default function Dashboard() {
     setLoading(true);
     async function load() {
       try {
-        const [summaryRes, trendsRes] = await Promise.all([
+        const [summaryRes, trendsRes, budgetsRes] = await Promise.all([
           client.get('/dashboard/summary', { params: { profileId: activeProfileId, today: localToday() } }),
           client.get('/dashboard/trends', { params: { profileId: activeProfileId, months: 9, today: localToday() } }),
+          // Budgets are a bonus here: if they fail, still show the dashboard.
+          client.get('/budgets', { params: { profileId: activeProfileId, today: localToday() } }).catch(() => null),
         ]);
         if (cancelled) return;
         setSummary(summaryRes.data);
         setTrends(trendsRes.data.trends);
+        setBudgets(budgetsRes?.data.budgets || []);
       } catch (err) {
         if (!cancelled) setError('Could not load your dashboard right now.');
       } finally {
@@ -45,6 +51,7 @@ export default function Dashboard() {
   if (error) return <div className="empty-state">{error}</div>;
 
   const net = summary.net;
+  const safe = summary.safeToSpend;
   const currency = activeProfile?.currency || 'USD';
   const currencySymbol = CURRENCIES.find((c) => c.code === currency)?.symbol || '$';
 
@@ -60,13 +67,62 @@ export default function Dashboard() {
       <div className="stat-grid">
         <StatCard label="Monthly Income" value={formatMoney(summary.income, { currency })} tone="positive" />
         <StatCard label="Monthly Expenses" value={formatMoney(summary.expenses, { currency })} tone="negative" />
-        <StatCard
-          label="Remaining"
-          value={formatMoney(net, { currency })}
-          tone={net >= 0 ? 'positive' : 'negative'}
-          hint={net >= 0 ? 'On track this month' : 'Spending exceeds income'}
-        />
+        {safe ? (
+          <StatCard
+            label="Safe to spend"
+            value={formatMoney(safe.amount, { currency })}
+            tone={safe.amount >= 0 ? 'positive' : 'negative'}
+            hint={safe.amount >= 0
+              ? `About ${formatMoney(safe.perDay, { currency })} a day for ${safe.daysLeft} day${safe.daysLeft === 1 ? '' : 's'}`
+              : 'More is committed than has come in this month'}
+          />
+        ) : (
+          <StatCard label="Net" value={formatMoney(net, { currency })} tone={net >= 0 ? 'positive' : 'negative'} />
+        )}
         <StatCard label="Largest Category" value={summary.largestCategory || '—'} />
+      </div>
+
+      <div className="chart-grid">
+        {safe && (
+          <div className="card">
+            <div className="card-title">How "safe to spend" is worked out</div>
+            <ul className="safe-breakdown">
+              <li><span>Income so far</span><span className="amount">{formatMoney(safe.income, { currency })}</span></li>
+              <li><span>Spent so far</span><span className="amount">−{formatMoney(safe.spent, { currency })}</span></li>
+              <li><span>Bills still due this month</span><span className="amount">−{formatMoney(safe.billsDue, { currency })}</span></li>
+              {safe.scheduled > 0 && (
+                <li><span>Scheduled later this month ({safe.scheduledCount})</span><span className="amount">−{formatMoney(safe.scheduled, { currency })}</span></li>
+              )}
+              <li><span>Safe to spend</span><span className="amount">{formatMoney(safe.amount, { currency })}</span></li>
+            </ul>
+            {safe.upcomingBills.length > 0 && (
+              <ul className="upcoming-bills">
+                {safe.upcomingBills.map((b) => (
+                  <li key={b.id} className={b.overdue ? 'overdue' : ''}>
+                    <span>{b.name} · {b.overdue ? 'overdue' : `due ${formatDate(b.dueOn)}`}</span>
+                    <span className="amount">{formatMoney(b.amount, { currency })}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="hint" style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 10 }}>
+              Income you're still expecting this month isn't counted until it arrives.
+            </div>
+          </div>
+        )}
+        <div className="card">
+          <div className="card-title">
+            Budgets
+            <Link to="/budgets" style={{ fontSize: 12, fontWeight: 500 }}>{budgets.length ? 'See all' : 'Set up'}</Link>
+          </div>
+          {budgets.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: 0 }}>
+              Set a monthly limit for categories like groceries or eating out, and see how close you are as you spend.
+            </p>
+          ) : (
+            budgets.slice(0, 4).map((b) => <BudgetBar key={b.id} budget={b} currency={currency} compact />)
+          )}
+        </div>
       </div>
 
       <div className="chart-grid">
