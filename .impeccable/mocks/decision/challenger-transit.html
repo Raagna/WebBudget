@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;font-family:'Hanken Grotesk',sans-serif;background:#F8F9FA;color:#14213D}
+.top{height:62px;background:#14213D;color:#fff;display:flex;align-items:center;padding:0 28px;gap:24px}
+.brand{font:800 22px 'Hanken Grotesk'}.top a{font:500 15px 'Hanken Grotesk';color:#C9D3E8}.top a.on{color:#fff;border-bottom:3px solid #F4A261;padding-bottom:4px}
+main{padding:28px 36px;display:grid;grid-template-columns:repeat(12,1fr);gap:22px}
+.next{grid-column:span 4;background:#fff;border:2px solid #14213D;border-radius:10px;padding:22px}
+.lbl{font:700 13px 'Hanken Grotesk';letter-spacing:.1em;text-transform:uppercase;color:#5A6478}
+.big{font:800 72px/1 'Hanken Grotesk';margin:12px 0}
+.map{grid-column:span 8;background:#fff;border-radius:10px;border:1px solid #DDE2EA;padding:22px 26px;position:relative;height:330px}
+.line{position:absolute;left:150px;right:30px;height:10px;border-radius:5px}
+.st{position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;border:5px solid}
+.nm{position:absolute;left:26px;font:700 15px 'Hanken Grotesk'}
+.today{position:absolute;top:56px;bottom:20px;left:56%;border-left:2px dashed #14213D}
+.today span{position:absolute;top:-24px;left:-24px;font:700 12px 'Hanken Grotesk'}
+.list{grid-column:1/-1;background:#fff;border-radius:10px;border:1px solid #DDE2EA}
+table{width:100%;border-collapse:collapse;font:500 15px 'Hanken Grotesk'}td{padding:12px 20px;border-bottom:1px solid #EEF1F5}td.a{text-align:right;font-weight:700}
+</style></head><body>
+<div class="top"><div class="brand">Ledger</div><a class="on">Dashboard</a><a>Transactions</a><a>Budgets</a><a>Bills</a><a>Reports</a><a>Profiles</a></div>
+<main>
+<section class="next"><div class="lbl">Next stop · safe to spend</div><div class="big">$1,255</div><div>$73.87 a day · 17 stops to month end</div></section>
+<section class="map"><div class="lbl">October line map</div>
+<div class="today"><span>Today</span></div>
+<div class="nm" style="top:80px">Groceries</div><div class="line" style="top:86px;background:#1D4ED8"></div><div class="st" style="top:80px;left:56%;border-color:#1D4ED8"></div>
+<div class="nm" style="top:140px">Eating out</div><div class="line" style="top:146px;background:#E63946"></div><div class="st" style="top:140px;left:72%;border-color:#E63946"></div>
+<div class="nm" style="top:200px">Transport</div><div class="line" style="top:206px;background:#2A9D8F"></div><div class="st" style="top:200px;left:40%;border-color:#2A9D8F"></div>
+<div class="nm" style="top:260px">Bills</div><div class="line" style="top:266px;background:#F4A261"></div><div class="st" style="top:260px;left:63%;border-color:#F4A261"></div>
+</section>
+<section class="list"><table>
+<tr><td>Oct 15</td><td>Loblaws</td><td>Groceries</td><td>Sam</td><td class="a">−$86.42</td></tr>
+<tr><td>Oct 14</td><td>Payroll deposit</td><td>Income</td><td>You</td><td class="a">+$2,100.00</td></tr>
+<tr><td>Oct 12</td><td>Tim Hortons</td><td>Eating out</td><td>You</td><td class="a">−$4.25</td></tr>
+</table></section>
+</main>
+</body></html>

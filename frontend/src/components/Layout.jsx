@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
+import { APP_NAME } from '../brand.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
@@ -29,7 +30,8 @@ export default function Layout({ children }) {
       <aside className={'sidebar' + (menuOpen ? ' menu-open' : '')}>
         <div className="sidebar-topbar">
           <div className="sidebar-brand">
-            <span className="brand-mark">Ledger</span>
+            <span className="brand-mark" aria-hidden="true" />
+            {APP_NAME}
           </div>
           <button
             type="button"

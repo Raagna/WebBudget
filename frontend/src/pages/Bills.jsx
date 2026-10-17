@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import client from '../api/client';
 import BillForm from '../components/BillForm.jsx';
-import StatCard from '../components/StatCard.jsx';
+import { categoryColor } from '../utils/categoryColors.js';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate, localToday, daysBetween } from '../utils/format.js';
 import { scanFileToDataUrl, SCAN_ACCEPT } from '../utils/scan.js';
@@ -223,7 +223,7 @@ export default function Bills() {
         <tr>
           <td className="mono col-date">{formatDate(b.dueOn)}</td>
           <td className="col-desc">{b.name}</td>
-          <td className="col-cat">{b.categoryName && <span className="tag">{b.categoryName}</span>}</td>
+          <td className="col-cat">{b.categoryName && <span className="tag cat" style={{ '--cat': categoryColor(b.categoryName) }}>{b.categoryName}</span>}</td>
           <td className="col-rec">{b.isRecurring && <span className="tag recurring">recurring</span>}</td>
           <td className="bill-status col-status">
             {b.isPaid
@@ -364,13 +364,18 @@ export default function Bills() {
         </div>
       ) : (
         <>
-          <div className="stat-grid">
-            <StatCard label="Overdue" value={formatMoney(overdueTotal, { currency })}
-                      tone={overdue.length > 0 ? 'negative' : undefined}
-                      hint={`${overdue.length} bill${overdue.length === 1 ? '' : 's'}`} />
-            <StatCard label={`Due in next ${UPCOMING_WINDOW_DAYS} days`} value={formatMoney(dueSoonTotal, { currency })}
-                      hint={`${dueSoon.length} bill${dueSoon.length === 1 ? '' : 's'}`} />
-          </div>
+          {/* One line of totals, figure first, instead of a pair of tiles,
+              so the bill list starts higher (especially on a phone). */}
+          <p className="budget-summary">
+            <span>
+              <b>{formatMoney(dueSoonTotal, { currency })}</b>due in the next {UPCOMING_WINDOW_DAYS} days
+              <span className="change">{dueSoon.length} bill{dueSoon.length === 1 ? '' : 's'}</span>
+            </span>
+            <span className={overdue.length > 0 ? 'over' : ''}>
+              <b>{formatMoney(overdueTotal, { currency })}</b>overdue
+              <span className="change">{overdue.length} bill{overdue.length === 1 ? '' : 's'}</span>
+            </span>
+          </p>
 
           {overdue.length > 0 && renderSection('Overdue', overdue)}
           {renderSection('Upcoming', upcoming, 'Nothing else due. Add a bill or scan one to keep track of it.')}

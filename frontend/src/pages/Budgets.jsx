@@ -3,6 +3,7 @@ import client from '../api/client';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, localToday } from '../utils/format.js';
 import BudgetBar from '../components/BudgetBar.jsx';
+import { changeVsLastMonth } from '../utils/change.js';
 
 // Compares how much of the budget is used with how much of the month has
 // passed, so "60% used" means something: fine on the 25th, a warning on the 5th.
@@ -100,23 +101,18 @@ export default function Budgets() {
       {error && <div className="auth-error" style={{ marginBottom: 14 }}>{error}</div>}
 
       {data.budgets.length > 0 && (
-        <div className="stat-grid">
-          <div className="card stat-card">
-            <div className="label">Budgeted</div>
-            <div className="value">{formatMoney(totals.budgeted, { currency })}</div>
-          </div>
-          <div className="card stat-card">
-            <div className="label">Spent in budgets</div>
-            <div className="value negative">{formatMoney(totals.spent, { currency })}</div>
-          </div>
-          <div className="card stat-card">
-            <div className="label">Left in budgets</div>
-            <div className="value positive">{formatMoney(totals.remaining, { currency })}</div>
-            {totals.unbudgetedSpent > 0 && (
-              <div className="hint">Plus {formatMoney(totals.unbudgetedSpent, { currency })} spent outside any budget</div>
-            )}
-          </div>
-        </div>
+        // One line of totals rather than a row of identical tiles: the
+        // number comes first and the words say what it is.
+        <p className="budget-summary">
+          <span><b>{formatMoney(totals.remaining, { currency })}</b>left in budgets</span>
+          <span>
+            <b>{formatMoney(totals.spent, { currency })}</b>spent of {formatMoney(totals.budgeted, { currency })}
+            {changeVsLastMonth(totals.spent, totals.lastMonthSpent, currency) && <span className="change">{changeVsLastMonth(totals.spent, totals.lastMonthSpent, currency)}</span>}
+          </span>
+          {totals.unbudgetedSpent > 0 && (
+            <span><b>{formatMoney(totals.unbudgetedSpent, { currency })}</b>spent outside any budget</span>
+          )}
+        </p>
       )}
 
       <div className="card" style={{ marginBottom: 20 }}>

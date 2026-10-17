@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext.jsx';
+import { categoryColor } from '../utils/categoryColors.js';
+
+const TYPE_LABEL = { expense: 'Spending', income: 'Income', both: 'Both' };
 
 export default function Settings() {
   const { user, deleteAccount } = useAuth();
@@ -89,12 +92,14 @@ export default function Settings() {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Profile</div>
-        <div className="form-grid">
-          <div className="form-field"><label>Name</label><input value={user?.name || ''} disabled /></div>
-          <div className="form-field"><label>Email</label><input value={user?.email || ''} disabled /></div>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 12 }}>
-          Profile editing isn't wired up in this starter — add a PATCH /api/users/me endpoint to support it.
+        {/* Shown as plain facts, not inputs: they can't be edited yet, so
+            they shouldn't look editable. */}
+        <dl className="facts">
+          <div><dt>Name</dt><dd>{user?.name}</dd></div>
+          <div><dt>Email</dt><dd>{user?.email}</dd></div>
+        </dl>
+        <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '12px 0 0' }}>
+          Your name and email can't be changed here yet.
         </p>
       </div>
 
@@ -104,15 +109,15 @@ export default function Settings() {
         {message && <div className="tag" style={{ marginBottom: 12 }}>{message}</div>}
         <form onSubmit={addCategory} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 18, flexWrap: 'wrap' }}>
           <div className="form-field">
-            <label>Category name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pet care" />
+            <label htmlFor="new-category-name">Category name</label>
+            <input id="new-category-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pet care" />
           </div>
           <div className="form-field">
-            <label>Type</label>
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="both">Both</option>
+            <label htmlFor="new-category-type">Used for</label>
+            <select id="new-category-type" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="expense">{TYPE_LABEL.expense}</option>
+              <option value="income">{TYPE_LABEL.income}</option>
+              <option value="both">{TYPE_LABEL.both}</option>
             </select>
           </div>
           <button className="btn btn-primary" type="submit">Add category</button>
@@ -122,14 +127,18 @@ export default function Settings() {
           <div className="empty-state">No categories to show.</div>
         ) : (
           <table className="ledger stack">
-            <thead><tr><th>Name</th><th>Type</th><th></th><th></th></tr></thead>
+            <thead><tr><th>Category</th><th>Used for</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
               {categories.map((c) => (
                 <tr key={c.id}>
-                  <td className="col-desc">{c.name}</td>
-                  <td className="mono col-date">{c.type}</td>
-                  <td className="col-cat">{!!c.is_default && <span className="tag">Default</span>}</td>
-                  <td className="col-actions"><button className="btn btn-danger btn-sm" onClick={() => removeCategory(c)}>Remove</button></td>
+                  {/* The chip shows the category's colour, the same one it
+                      has on every chart, strip and list in the app. */}
+                  <td className="col-desc">
+                    <span className="tag cat" style={{ '--cat': categoryColor(c.name) }}>{c.name}</span>
+                    {!!c.is_default && <span className="default-note">Built in</span>}
+                  </td>
+                  <td className="col-date">{TYPE_LABEL[c.type] || c.type}</td>
+                  <td className="col-actions" style={{ textAlign: 'right' }}><button className="btn btn-danger btn-sm" onClick={() => removeCategory(c)}>Remove</button></td>
                 </tr>
               ))}
             </tbody>
@@ -144,13 +153,13 @@ export default function Settings() {
             These are built-in categories you've hidden. Restoring one brings it back to your list above.
           </p>
           <table className="ledger stack">
-            <thead><tr><th>Name</th><th>Type</th><th></th></tr></thead>
+            <thead><tr><th>Category</th><th>Used for</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
               {hidden.map((c) => (
                 <tr key={c.id}>
-                  <td className="col-desc">{c.name}</td>
-                  <td className="mono col-date">{c.type}</td>
-                  <td className="col-actions"><button className="btn btn-secondary btn-sm" onClick={() => restoreCategory(c)}>Restore</button></td>
+                  <td className="col-desc"><span className="tag cat" style={{ '--cat': categoryColor(c.name) }}>{c.name}</span></td>
+                  <td className="col-date">{TYPE_LABEL[c.type] || c.type}</td>
+                  <td className="col-actions" style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => restoreCategory(c)}>Restore</button></td>
                 </tr>
               ))}
             </tbody>

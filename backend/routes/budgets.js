@@ -3,7 +3,7 @@ const { query, queryOne, run } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { isPositiveAmount, toCents, fromCents, validateBody } = require('../middleware/validate');
-const { monthPeriod, daysLeftInMonth } = require('../utils/period');
+const { monthPeriod, daysLeftInMonth, sameStretchLastMonth } = require('../utils/period');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -35,16 +35,21 @@ router.get('/', asyncHandler(async (req, res) => {
   const profileId = await requireMember(req, res, req.query.profileId);
   if (profileId === null) return;
   const { today, month, start, end } = monthPeriod(req);
+  // Same stretch of last month, for "more/less than this point last month".
+  const last = sameStretchLastMonth(end);
 
   const rows = await query(
     `SELECT b.id, b.category_id, c.name AS category_name, c.icon AS category_icon, b.amount_cents,
             COALESCE((SELECT SUM(t.amount_cents) FROM transactions t
                       WHERE t.profile_id = b.profile_id AND t.category_id = b.category_id
-                        AND t.type = 'expense' AND t.occurred_on BETWEEN ? AND ?), 0)::bigint AS spent_cents
+                        AND t.type = 'expense' AND t.occurred_on BETWEEN ? AND ?), 0)::bigint AS spent_cents,
+            COALESCE((SELECT SUM(t.amount_cents) FROM transactions t
+                      WHERE t.profile_id = b.profile_id AND t.category_id = b.category_id
+                        AND t.type = 'expense' AND t.occurred_on BETWEEN ? AND ?), 0)::bigint AS last_spent_cents
      FROM budgets b
      JOIN categories c ON c.id = b.category_id
      WHERE b.profile_id = ?`,
-    [start, end, profileId]
+    [start, end, last.start, last.end, profileId]
   );
 
   const budgets = rows.map((r) => {
@@ -57,6 +62,7 @@ router.get('/', asyncHandler(async (req, res) => {
       categoryIcon: r.category_icon,
       amount: fromCents(amount),
       spent: fromCents(spent),
+      lastMonthSpent: fromCents(Number(r.last_spent_cents)), // same stretch of last month
       remaining: fromCents(amount - spent), // negative = over budget
       percent: Math.round((spent / amount) * 100),
     };
@@ -79,6 +85,7 @@ router.get('/', asyncHandler(async (req, res) => {
     totals: {
       budgeted: fromCents(budgetedCents),
       spent: fromCents(spentCents),
+      lastMonthSpent: fromCents(rows.reduce((s, r) => s + Number(r.last_spent_cents), 0)),
       // Only what's still unspent in budgets that aren't already over.
       remaining: fromCents(rows.reduce((s, r) => s + Math.max(0, Number(r.amount_cents) - Number(r.spent_cents)), 0)),
       unbudgetedSpent: fromCents(Number(unbudgeted.cents)),

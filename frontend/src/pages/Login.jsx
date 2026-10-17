@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { APP_NAME } from '../brand.js';
 
 export default function Login() {
   const { login } = useAuth();
@@ -27,6 +28,7 @@ export default function Login() {
   return (
     <div className="auth-shell">
       <div className="card auth-card">
+        <div className="auth-brand"><span className="brand-mark" aria-hidden="true" />{APP_NAME}</div>
         <h1>Welcome back</h1>
         <p className="subtitle">Sign in to your ledger.</p>
         {error && <div className="auth-error">{error}</div>}

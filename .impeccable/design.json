@@ -1,0 +1,774 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-17T21:03:58.663Z",
+  "title": "Design System: Ledger (placeholder name)",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Mineral Ground",
+        "canonical": "#f4f6f2",
+        "tonalRamp": [
+          "#262d1f",
+          "#424e36",
+          "#5e704d",
+          "#7a9164",
+          "#99ac86",
+          "#b8c5ab",
+          "#d6decf",
+          "#f2f5f0"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "#eef2ec",
+        "tonalRamp": [
+          "#242d1f",
+          "#3e4f36",
+          "#58704d",
+          "#739163",
+          "#93ac86",
+          "#b3c5aa",
+          "#d4decf",
+          "#f1f5f0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#17211d",
+        "tonalRamp": [
+          "#1f2d28",
+          "#364e45",
+          "#4e6f62",
+          "#65907f",
+          "#87ab9d",
+          "#abc4ba",
+          "#cfddd8",
+          "#f0f5f3"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "#4f5b55",
+        "tonalRamp": [
+          "#242926",
+          "#3e4742",
+          "#58655e",
+          "#72837a",
+          "#92a099",
+          "#b3bdb8",
+          "#d3d9d6",
+          "#f1f3f2"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#d7ded7",
+        "tonalRamp": [
+          "#232a23",
+          "#3c493c",
+          "#556755",
+          "#6f866f",
+          "#8fa38f",
+          "#b1beb1",
+          "#d2dad2",
+          "#f1f3f1"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "#b9c4bc",
+        "tonalRamp": [
+          "#232a25",
+          "#3d4840",
+          "#56665b",
+          "#708576",
+          "#90a295",
+          "#b2beb5",
+          "#d3dad5",
+          "#f1f3f2"
+        ]
+      },
+      "rail": {
+        "role": "secondary",
+        "displayName": "Rail Green",
+        "canonical": "#173a2f",
+        "tonalRamp": [
+          "#16372c",
+          "#265f4d",
+          "#36876d",
+          "#46af8e",
+          "#6dc5a9",
+          "#99d6c3",
+          "#c5e8dd",
+          "#edf8f4"
+        ]
+      },
+      "rail-raised": {
+        "role": "secondary",
+        "displayName": "Raised Rail",
+        "canonical": "#1f4a3c",
+        "tonalRamp": [
+          "#17362c",
+          "#275d4c",
+          "#38856c",
+          "#48ad8c",
+          "#6fc3a8",
+          "#9ad5c2",
+          "#c5e7dc",
+          "#edf7f4"
+        ]
+      },
+      "rail-ink": {
+        "role": "secondary",
+        "displayName": "Rail Ink",
+        "canonical": "#eaf3ee",
+        "tonalRamp": [
+          "#1c3125",
+          "#305440",
+          "#45785b",
+          "#599c77",
+          "#7db596",
+          "#a4cbb5",
+          "#cbe1d5",
+          "#eff6f2"
+        ]
+      },
+      "rail-ink-soft": {
+        "role": "secondary",
+        "displayName": "Rail Ink Soft",
+        "canonical": "#b7cdc2",
+        "tonalRamp": [
+          "#1f2d26",
+          "#364e42",
+          "#4d6f5e",
+          "#64907a",
+          "#87ab99",
+          "#abc4b8",
+          "#cfded6",
+          "#f0f5f2"
+        ]
+      },
+      "rail-hi": {
+        "role": "secondary",
+        "displayName": "Mint Window",
+        "canonical": "#a6e3c3",
+        "tonalRamp": [
+          "#123a25",
+          "#206541",
+          "#2d905c",
+          "#3bba77",
+          "#64ce96",
+          "#92ddb6",
+          "#c1ebd5",
+          "#ecf9f2"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Note Green",
+        "canonical": "#1f6e46",
+        "tonalRamp": [
+          "#113c26",
+          "#1d6742",
+          "#29935e",
+          "#36bf7a",
+          "#60d298",
+          "#90e0b7",
+          "#bfedd6",
+          "#ebf9f2"
+        ]
+      },
+      "accent-strong": {
+        "role": "primary",
+        "displayName": "Deep Note Green",
+        "canonical": "#175636",
+        "tonalRamp": [
+          "#103c26",
+          "#1c6942",
+          "#28955d",
+          "#34c179",
+          "#5ed498",
+          "#8ee1b7",
+          "#bfeed6",
+          "#ebfaf2"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Pale Note Green",
+        "canonical": "#e2efe6",
+        "tonalRamp": [
+          "#1b3122",
+          "#2f553b",
+          "#437a54",
+          "#579e6d",
+          "#7cb68e",
+          "#a3ccb0",
+          "#cae2d2",
+          "#eff6f1"
+        ]
+      },
+      "positive": {
+        "role": "status",
+        "displayName": "Positive Green",
+        "canonical": "#15693f",
+        "tonalRamp": [
+          "#0d4026",
+          "#166f42",
+          "#1f9d5e",
+          "#29cc7a",
+          "#55dd99",
+          "#88e7b8",
+          "#bbf1d6",
+          "#eafbf2"
+        ]
+      },
+      "negative": {
+        "role": "status",
+        "displayName": "Reserved Red",
+        "canonical": "#b42318",
+        "tonalRamp": [
+          "#410f0b",
+          "#711a14",
+          "#a0261c",
+          "#d03125",
+          "#e05c52",
+          "#ea8d86",
+          "#f3beba",
+          "#fbebe9"
+        ]
+      },
+      "negative-soft": {
+        "role": "status",
+        "displayName": "Red Wash",
+        "canonical": "#fdecea",
+        "tonalRamp": [
+          "#41110b",
+          "#711e14",
+          "#a02a1c",
+          "#d03725",
+          "#e06152",
+          "#ea9086",
+          "#f3c0ba",
+          "#fbebe9"
+        ]
+      },
+      "negative-note": {
+        "role": "status",
+        "displayName": "Oxblood Note",
+        "canonical": "#7a1f17",
+        "tonalRamp": [
+          "#40100c",
+          "#701c15",
+          "#9f281e",
+          "#ce3427",
+          "#df5f53",
+          "#e88f87",
+          "#f2bfba",
+          "#fbebea"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Ochre Warning",
+        "canonical": "#8a5a00",
+        "tonalRamp": [
+          "#412e0b",
+          "#715014",
+          "#a0721c",
+          "#d09425",
+          "#e0af52",
+          "#eac786",
+          "#f3dfba",
+          "#fbf5e9"
+        ]
+      },
+      "warn-soft": {
+        "role": "status",
+        "displayName": "Warm Wash",
+        "canonical": "#fbf1dc",
+        "tonalRamp": [
+          "#41300b",
+          "#715314",
+          "#a0761c",
+          "#d09925",
+          "#e0b252",
+          "#eac986",
+          "#f3e0ba",
+          "#fbf5e9"
+        ]
+      },
+      "badge-overdue": {
+        "role": "status",
+        "displayName": "Overdue Badge",
+        "canonical": "#f2b8b0",
+        "tonalRamp": [
+          "#41120b",
+          "#711f14",
+          "#a02c1c",
+          "#d03925",
+          "#e06352",
+          "#ea9286",
+          "#f3c1ba",
+          "#fbebe9"
+        ]
+      },
+      "badge-overdue-ink": {
+        "role": "status",
+        "displayName": "Overdue Badge Ink",
+        "canonical": "#5c0f08",
+        "tonalRamp": [
+          "#41100b",
+          "#711c14",
+          "#a0271c",
+          "#d03325",
+          "#e05e52",
+          "#ea8e86",
+          "#f3beba",
+          "#fbebe9"
+        ]
+      },
+      "chart-grid": {
+        "role": "neutral",
+        "displayName": "Chart Grid",
+        "canonical": "#e3e8e3",
+        "tonalRamp": [
+          "#232a23",
+          "#3c493c",
+          "#556855",
+          "#6e866e",
+          "#8fa38f",
+          "#b1bfb1",
+          "#d2dad2",
+          "#f1f3f1"
+        ]
+      },
+      "note-green": {
+        "role": "tertiary",
+        "displayName": "Note Green ($20): Groceries, Income",
+        "canonical": "#1f6e46",
+        "tonalRamp": [
+          "#113c26",
+          "#1d6742",
+          "#29935e",
+          "#36bf7a",
+          "#60d298",
+          "#90e0b7",
+          "#bfedd6",
+          "#ebf9f2"
+        ]
+      },
+      "note-blue": {
+        "role": "tertiary",
+        "displayName": "Note Blue ($5): Transportation",
+        "canonical": "#1f5fa8",
+        "tonalRamp": [
+          "#0c2541",
+          "#153f70",
+          "#1d5a9f",
+          "#2675cf",
+          "#5394df",
+          "#86b4e9",
+          "#bad4f2",
+          "#e9f2fb"
+        ]
+      },
+      "note-purple": {
+        "role": "tertiary",
+        "displayName": "Note Purple ($10): Entertainment",
+        "canonical": "#5e3f99",
+        "tonalRamp": [
+          "#211636",
+          "#3a275e",
+          "#523786",
+          "#6b47ad",
+          "#8c6fc3",
+          "#ae9ad5",
+          "#d1c5e7",
+          "#f1edf8"
+        ]
+      },
+      "note-brown": {
+        "role": "tertiary",
+        "displayName": "Note Brown ($100): Rent/Mortgage",
+        "canonical": "#7a4e2d",
+        "tonalRamp": [
+          "#382415",
+          "#613e24",
+          "#8a5833",
+          "#b37242",
+          "#c8926a",
+          "#d9b397",
+          "#e9d4c3",
+          "#f8f1ec"
+        ]
+      },
+      "note-teal": {
+        "role": "tertiary",
+        "displayName": "Note Teal: Utilities",
+        "canonical": "#0e6e72",
+        "tonalRamp": [
+          "#0b3f41",
+          "#146d71",
+          "#1c9ba0",
+          "#25c9d0",
+          "#52dbe0",
+          "#86e6ea",
+          "#baf0f3",
+          "#e9fafb"
+        ]
+      },
+      "note-ochre": {
+        "role": "tertiary",
+        "displayName": "Note Ochre: Shopping",
+        "canonical": "#7d5a0f",
+        "tonalRamp": [
+          "#41300b",
+          "#715314",
+          "#a0761c",
+          "#d09a25",
+          "#e0b352",
+          "#eaca86",
+          "#f3e1ba",
+          "#fbf5e9"
+        ]
+      },
+      "note-plum": {
+        "role": "tertiary",
+        "displayName": "Note Plum: Food",
+        "canonical": "#86306a",
+        "tonalRamp": [
+          "#38142d",
+          "#62234d",
+          "#8b326e",
+          "#b4418f",
+          "#c969aa",
+          "#d996c3",
+          "#e9c3dd",
+          "#f8ecf4"
+        ]
+      },
+      "note-slate": {
+        "role": "tertiary",
+        "displayName": "Note Slate: Bill, Bills due, Spending series",
+        "canonical": "#3d5168",
+        "tonalRamp": [
+          "#1c2630",
+          "#314154",
+          "#465d77",
+          "#5b789a",
+          "#7e97b4",
+          "#a5b6ca",
+          "#ccd5e1",
+          "#eff2f6"
+        ]
+      },
+      "note-indigo": {
+        "role": "tertiary",
+        "displayName": "Note Indigo: Subscription",
+        "canonical": "#4b4fa3",
+        "tonalRamp": [
+          "#181934",
+          "#2a2c5b",
+          "#3b3f81",
+          "#4d51a8",
+          "#7377bf",
+          "#9da0d2",
+          "#c7c8e5",
+          "#eeeef7"
+        ]
+      },
+      "note-green-teal": {
+        "role": "tertiary",
+        "displayName": "Deep Green-Teal: Healthcare",
+        "canonical": "#0f6a55",
+        "tonalRamp": [
+          "#0b4135",
+          "#14715b",
+          "#1ca082",
+          "#25d0a9",
+          "#52e0bf",
+          "#86ead3",
+          "#baf3e6",
+          "#e9fbf7"
+        ]
+      },
+      "note-neutral": {
+        "role": "tertiary",
+        "displayName": "Neutral Grey: Other, Uncategorized",
+        "canonical": "#5b6470",
+        "tonalRamp": [
+          "#22262a",
+          "#3b4149",
+          "#555d68",
+          "#6e7987",
+          "#8e97a4",
+          "#b0b7bf",
+          "#d2d6da",
+          "#f1f2f4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Note Figure",
+        "purpose": "The note panel headline figure only; container-unit sized against the note head (container-type: inline-size), never wraps."
+      },
+      "headline": {
+        "displayName": "Page Title",
+        "purpose": "Page h1; 26px at <=720px and on the auth card."
+      },
+      "figure": {
+        "displayName": "Summary Figure",
+        "purpose": "Bold numbers in the summary line; related sizes 30px (window), 21px (strip), 17-19px (equation)."
+      },
+      "title": {
+        "displayName": "Card Title",
+        "purpose": "Card headings with optional right-aligned link."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and captions (~52ch)."
+      },
+      "table": {
+        "displayName": "Ledger",
+        "purpose": "Table rows; headers 12.5px/700 soft ink, sentence case."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, fact terms; sentence case, never uppercase-tracked."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 2px rgba(23, 33, 29, 0.05), 0 6px 16px -10px rgba(23, 33, 29, 0.18)",
+        "purpose": "Every card; category strips on hover."
+      },
+      {
+        "name": "pop",
+        "value": "0 2px 4px rgba(23, 33, 29, 0.08), 0 18px 40px -18px rgba(23, 33, 29, 0.35)",
+        "purpose": "Note panel and auth card."
+      },
+      {
+        "name": "window-inset",
+        "value": "inset 0 1px 0 rgba(255, 255, 255, 0.35)",
+        "purpose": "Top highlight of the note window."
+      },
+      {
+        "name": "phone-menu",
+        "value": "0 16px 30px rgba(10, 25, 20, 0.35)",
+        "purpose": "Dropped navigation panel at <=720px."
+      },
+      {
+        "name": "tooltip",
+        "value": "0 8px 20px -12px rgba(23,33,29,.35)",
+        "purpose": "Chart tooltips."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The single easing for all transitions and the note entrance."
+      },
+      {
+        "name": "note-in",
+        "value": "0.7s ease-out; from translateY(10px) scale(0.985)",
+        "purpose": "Note panel entrance; only under prefers-reduced-motion: no-preference."
+      },
+      {
+        "name": "figure-in",
+        "value": "0.9s 0.1s ease-out; from translateY(12px) opacity 0.25",
+        "purpose": "Note figure rise; only under prefers-reduced-motion: no-preference."
+      },
+      {
+        "name": "state",
+        "value": "0.1s-0.2s ease-out",
+        "purpose": "Hover, press and menu-toggle state transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "720px",
+        "purpose": "Rail to top bar, two-line ledger rows, single-column forms."
+      },
+      {
+        "name": "chart-grid",
+        "value": "900px",
+        "purpose": "Card grid stacks."
+      },
+      {
+        "name": "dash-top",
+        "value": "1000px",
+        "purpose": "Note and strip column stack."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One main action per header.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Add or scan a transaction</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:999px;border:1px solid transparent;font:700 14px 'Figtree Variable','Figtree',system-ui,sans-serif;min-height:40px;cursor:pointer;transition:background .15s cubic-bezier(.16,1,.3,1),border-color .15s cubic-bezier(.16,1,.3,1),transform .1s cubic-bezier(.16,1,.3,1)}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:2px solid #1f6e46;outline-offset:2px}.ds-btn-primary{background:#1f6e46;color:#fff}.ds-btn-primary:hover{background:#175636}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Import, export, cancel and other quieter actions.",
+      "html": "<button class=\"ds-btn-secondary\">Import CSV</button>",
+      "css": ".ds-btn-secondary{display:inline-flex;align-items:center;padding:10px 18px;border-radius:999px;border:1px solid #b9c4bc;background:#fff;color:#17211d;font:700 14px 'Figtree Variable','Figtree',system-ui,sans-serif;min-height:40px;cursor:pointer;transition:background .15s,border-color .15s}.ds-btn-secondary:hover{border-color:#1f6e46;background:#e2efe6}.ds-btn-secondary:focus-visible{outline:2px solid #1f6e46;outline-offset:2px}"
+    },
+    {
+      "name": "Neutral Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Delete and Remove; deliberately never red.",
+      "html": "<button class=\"ds-btn-danger\">Delete</button>",
+      "css": ".ds-btn-danger{display:inline-flex;align-items:center;padding:6px 13px;border-radius:999px;border:1px solid #d7ded7;background:transparent;color:#4f5b55;font:700 13px 'Figtree Variable','Figtree',system-ui,sans-serif;min-height:32px;cursor:pointer;transition:background .15s,border-color .15s}.ds-btn-danger:hover{background:#eef2ec;border-color:#b9c4bc;color:#17211d}.ds-btn-danger:focus-visible{outline:2px solid #1f6e46;outline-offset:2px}"
+    },
+    {
+      "name": "Select Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled field with the themed chevron and plain-language options.",
+      "html": "<label class=\"ds-field\"><span>Sort</span><select class=\"ds-select\"><option>Newest first</option><option>Largest amount</option><option>Income first</option></select></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:6px;font-family:'Figtree Variable','Figtree',system-ui,sans-serif}.ds-field span{font-size:13px;font-weight:700;color:#4f5b55}.ds-select{appearance:none;-webkit-appearance:none;padding:10px 34px 10px 12px;border:1px solid #b9c4bc;border-radius:8px;background:#fff url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%234f5b55' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 12px center;color:#17211d;font-family:inherit;font-size:14px;min-height:42px}.ds-select:focus{outline:2px solid #1f6e46;outline-offset:0;border-color:#1f6e46}"
+    },
+    {
+      "name": "Rail Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Deep green rail with mint active item and overdue badge.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-nav ds-nav-active\" href=\"#\">Dashboard</a><a class=\"ds-nav\" href=\"#\">Transactions</a><a class=\"ds-nav\" href=\"#\">Bills <span class=\"ds-badge\">2</span></a></nav>",
+      "css": ".ds-rail{background:#173a2f;padding:14px;width:236px;display:flex;flex-direction:column;gap:2px;font-family:'Figtree Variable','Figtree',system-ui,sans-serif}.ds-nav{display:flex;align-items:center;padding:10px 12px;border-radius:8px;color:#b7cdc2;font-size:15px;font-weight:600;text-decoration:none;transition:background .15s,color .15s}.ds-nav:hover{background:#1f4a3c;color:#eaf3ee}.ds-nav:focus-visible{outline:2px solid #a6e3c3;outline-offset:2px}.ds-nav-active,.ds-nav-active:hover{background:#a6e3c3;color:#0d2a20}.ds-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#f2b8b0;color:#5c0f08;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}"
+    },
+    {
+      "name": "Category Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Mist pill led by a dot in the category denomination colour.",
+      "html": "<span class=\"ds-chip\" style=\"--cat:#86306a\">Food</span> <span class=\"ds-chip ds-chip-rec\">monthly</span>",
+      "css": ".ds-chip{--cat:#5b6470;display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 8px;border-radius:999px;background:#eef2ec;color:#17211d;font:600 13px 'Figtree Variable','Figtree',system-ui,sans-serif}.ds-chip::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--cat)}.ds-chip-rec{background:#fbf1dc;color:#8a5a00}.ds-chip-rec::before{display:none}"
+    },
+    {
+      "name": "Note Panel",
+      "kind": "custom",
+      "refersTo": "note-panel",
+      "description": "The one banknote: guilloche, container-sized figure, functional window, written equation.",
+      "html": "<section class=\"ds-note\"><div class=\"ds-note-head\"><h2>Safe to spend</h2><div class=\"ds-note-fig\">€1,284.50</div></div><div class=\"ds-note-win\"><b>€85.63</b><span>a day</span><hr><b>15</b><span>days left</span></div><p class=\"ds-note-sum\"><span><b>€4,200.00</b>income so far</span><span>− <b>€2,048.49</b>spent</span><span>− <b>€867.01</b>bills due</span><span>= <b>€1,284.50</b>safe to spend</span></p></section>",
+      "css": ".ds-note{position:relative;overflow:hidden;border-radius:18px;padding:26px 28px 22px;color:#fff;font-family:'Figtree Variable','Figtree',system-ui,sans-serif;background-color:#1f6e46;background-image:repeating-radial-gradient(circle at 88% 22%,rgba(255,255,255,.085) 0 1px,transparent 1px 8px),repeating-radial-gradient(circle at 8% 120%,rgba(255,255,255,.06) 0 1px,transparent 1px 11px),linear-gradient(135deg,#1f6e46 0%,#175636 100%);box-shadow:0 2px 4px rgba(23,33,29,.08),0 18px 40px -18px rgba(23,33,29,.35);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 24px}.ds-note-head{container-type:inline-size;min-width:0}.ds-note-head h2{margin:0;font-size:18px;font-weight:700}.ds-note-fig{font-size:clamp(36px,16cqi,88px);font-weight:800;line-height:1;letter-spacing:-.035em;margin-top:10px;font-variant-numeric:tabular-nums;white-space:nowrap}.ds-note-win{width:176px;border-radius:12px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.35);padding:14px 14px 12px;text-align:center;display:flex;flex-direction:column}.ds-note-win b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}.ds-note-win span{font-size:13px;font-weight:600;color:#e7f4ec}.ds-note-win hr{border:none;border-top:1px solid rgba(255,255,255,.35);margin:10px 0;width:100%}.ds-note-sum{grid-column:1/-1;margin:0;padding-top:14px;border-top:1px solid rgba(255,255,255,.28);display:flex;flex-wrap:wrap;gap:10px 18px;font-size:13px;color:#d6ebdf}.ds-note-sum b{display:block;color:#fff;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}@media (prefers-reduced-motion:no-preference){.ds-note{animation:ds-note-in .7s cubic-bezier(.16,1,.3,1) both}@keyframes ds-note-in{from{transform:translateY(10px) scale(.985)}to{transform:none}}}"
+    },
+    {
+      "name": "Category Strip",
+      "kind": "custom",
+      "refersTo": "category-strip",
+      "description": "Full-colour budget strip in the denomination colour; red pill only when over.",
+      "html": "<a class=\"ds-strip\" style=\"--cat:#0e6e72\" href=\"#\"><span class=\"ds-strip-row\"><span>Utilities</span><span class=\"ds-strip-left ds-over\">€11.72 over</span></span><span class=\"ds-strip-sub\">€161.72 of €150.00 · €11.92 more than this point last month</span><span class=\"ds-track\"><span style=\"width:100%\"></span></span></a>",
+      "css": ".ds-strip{--cat:#1f6e46;display:flex;flex-direction:column;border-radius:12px;background:var(--cat);color:#fff;padding:13px 16px 12px;text-decoration:none;font-family:'Figtree Variable','Figtree',system-ui,sans-serif;transition:transform .15s cubic-bezier(.16,1,.3,1),box-shadow .15s}.ds-strip:hover{transform:translateY(-1px);box-shadow:0 1px 2px rgba(23,33,29,.05),0 6px 16px -10px rgba(23,33,29,.18)}.ds-strip:focus-visible{outline:2px solid #1f6e46;outline-offset:2px}.ds-strip-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-weight:700;font-size:15px}.ds-strip-left{font-weight:800;font-size:21px;font-variant-numeric:tabular-nums}.ds-strip-left.ds-over{background:#fff;color:#b42318;padding:1px 8px;border-radius:999px;font-size:15px}.ds-strip-sub{font-size:13px;color:rgba(255,255,255,.86);margin-top:2px}.ds-track{display:block;height:5px;border-radius:999px;background:rgba(255,255,255,.28);margin-top:9px;overflow:hidden}.ds-track span{display:block;height:100%;background:#fff;border-radius:999px}"
+    },
+    {
+      "name": "Budget Bar",
+      "kind": "custom",
+      "refersTo": "budget-bar-track",
+      "description": "Category swatch, left/over amount, category-coloured fill; red only past 100%.",
+      "html": "<div class=\"ds-bb\" style=\"--cat:#5e3f99\"><div class=\"ds-bb-head\"><span class=\"ds-bb-name\">Entertainment</span><span class=\"ds-bb-left ds-warn\">€18.00 left</span></div><div class=\"ds-bb-track\"><span style=\"width:88%\"></span></div><div class=\"ds-bb-sub\">€132.00 of €150.00 · 88% · €12.00 less than this point last month</div></div>",
+      "css": ".ds-bb{--cat:#1f6e46;font-family:'Figtree Variable','Figtree',system-ui,sans-serif;color:#17211d}.ds-bb-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.ds-bb-name{font-weight:700;display:inline-flex;align-items:center;gap:8px}.ds-bb-name::before{content:'';width:10px;height:10px;border-radius:3px;background:var(--cat)}.ds-bb-left{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}.ds-warn{color:#8a5a00}.ds-bb-track{height:10px;background:#eef2ec;border-radius:999px;overflow:hidden;margin:9px 0 6px}.ds-bb-track span{display:block;height:100%;border-radius:999px;background:var(--cat)}.ds-bb-sub{font-size:13px;color:#4f5b55;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Summary Line",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Totals as one wrapped line of figure-then-words, in place of KPI tiles.",
+      "html": "<p class=\"ds-sum\"><span><b>€412.30</b>left in budgets</span><span><b>€1,087.70</b>spent of €1,500.00<span class=\"ds-sum-ch\">€64.10 less than this point last month</span></span><span class=\"ds-sum-over\"><b>−€120.00</b>kept per month on average</span></p>",
+      "css": ".ds-sum{display:flex;flex-wrap:wrap;gap:6px 28px;align-items:baseline;font:15px 'Figtree Variable','Figtree',system-ui,sans-serif;color:#4f5b55}.ds-sum b{color:#17211d;font-size:26px;font-weight:800;letter-spacing:-.02em;margin-right:6px;font-variant-numeric:tabular-nums}.ds-sum-over b{color:#b42318}.ds-sum-ch{display:block;font-size:13px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Polymer Notes",
+    "overview": "Every spending category is a denomination. The app borrows the colour logic of Canada's polymer banknotes: each category owns one deep note colour and keeps it everywhere it appears (chip dot, budget bar, dashboard strip, chart series), so a household learns \"purple is entertainment\" the way they know a purple note is a ten. The shell is a deep note-green rail on a light mineral ground, and exactly one surface, the note panel, is dressed as a banknote: fine engraved line work, a translucent clear window that is a real readout, and the headline figure set large enough to answer \"am I OK this month?\" before anything else.\n\nThe rest of the world is quiet and working: white cards with a soft lift, hairline ledger rules, Figtree everywhere with tabular figures so money lines up in columns. Density is moderate; the dashboard carries a 7/5 split of note and strips, then cards. Red has one job, over-budget and negative, and the system protects that meaning by refusing red anywhere else, including destructive buttons and category colours.\n\nThe world rejects the category default of a grey dashboard with one brand accent and a row of identical white KPI tiles. Totals are written as a sentence-like summary line; the safe-to-spend number shows its own working as a written equation.",
+    "keyCharacteristics": [
+      "One note-colour per category, carried across every representation.",
+      "One note panel per screen, with guilloche line work and a functional window; nothing else is engraved.",
+      "Red means over-budget or negative, never decoration or action.",
+      "Figtree variable throughout, tabular figures on every amount, U+2212 for minus.",
+      "Pill-shaped buttons and chips, softly rounded cards (12px), a larger 18px radius for the note.",
+      "One authored motion: the note settles in on load; reduced motion removes it."
+    ],
+    "rules": [
+      {
+        "name": "The Reserved Red Rule",
+        "body": "Red means over-budget or negative, and nothing else. No red category, no red button, no red decoration. Delete and Remove stay neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Denomination Rule",
+        "body": "A category's colour comes only from `categoryColor(name)` and is the same in every chip dot, bar, strip and chart series. Never pick a category colour locally.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never-Colour-Alone Rule",
+        "body": "Every red or green state also carries words or a sign: \"over\", \"left\", \"+\", \"−\".",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Money Rule",
+        "body": "Every amount uses `font-variant-numeric: tabular-nums` so money lines up in columns.",
+        "section": "typography"
+      },
+      {
+        "name": "The Weight Not Case Rule",
+        "body": "Emphasis comes from weight and size. No uppercase tracked labels.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Note Rule",
+        "body": "Guilloche line work (repeating radial gradients) and the clear window belong to the note panel alone. Cards stay plain. The brand mark is the one small echo: a tiny note with a window.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every category colour from `categoryColor(name)` and use it identically for dots, bars, strips and chart series.",
+      "**Do** keep red (#b42318) for over-budget, overdue and negative values only, always paired with a word or sign.",
+      "**Do** set every amount in tabular figures and format negatives with U+2212.",
+      "**Do** write totals as a summary line (figure, then plain words) and show a change \"than this point last month\" where data exists.",
+      "**Do** size the note's headline figure in container units (clamp(36px, 16cqi, 88px)) with no wrapping.",
+      "**Do** give money tables the two-line row mode at ≤720px and keep them usable at 320px.",
+      "**Do** gate the note entrance behind `prefers-reduced-motion: no-preference`."
+    ],
+    "donts": [
+      "**Don't** build rows of identical KPI tiles; use the summary line.",
+      "**Don't** add kicker or eyebrow labels above headings, or uppercase tracked labels.",
+      "**Don't** put guilloche line work or a window on any surface except the note panel (and the brand mark's echo).",
+      "**Don't** make destructive buttons red; Delete and Remove use the neutral style.",
+      "**Don't** add red, or any near-red, to the category palette.",
+      "**Don't** add a second typeface or load fonts from a third-party CDN; Figtree is self-hosted.",
+      "**Don't** hard-code the product name; it lives in `APP_NAME` (brand.js) and the `<title>` until the owner chooses one."
+    ]
+  }
+}

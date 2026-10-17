@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import client from '../api/client';
 import TransactionForm from '../components/TransactionForm.jsx';
 import { useProfiles } from '../context/ProfileContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { categoryColor } from '../utils/categoryColors.js';
 import { formatMoney, formatDate, localToday } from '../utils/format.js';
 
 export default function Transactions() {
@@ -17,7 +19,15 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  // The dashboard's "Add or scan" button links here with ?add=1.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showForm, setShowForm] = useState(() => searchParams.get('add') === '1');
+  useEffect(() => {
+    if (searchParams.get('add') === '1') {
+      setShowForm(true);
+      setSearchParams({}, { replace: true }); // so a refresh doesn't reopen it
+    }
+  }, [searchParams, setSearchParams]);
   const [editing, setEditing] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
@@ -34,6 +44,8 @@ export default function Transactions() {
   // "type" is now a filter/sort dimension rather than a separate page -
   // All / Income / Expense, applied the same way as category or date.
   const [filters, setFilters] = useState({ type: '', categoryId: '', addedBy: '', from: '', to: '', sort: 'occurred_on', dir: 'desc' });
+  const [showFilters, setShowFilters] = useState(false);
+  const activeFilterCount = ['type', 'categoryId', 'addedBy', 'from', 'to'].filter((k) => filters[k]).length;
 
   const load = useCallback(async () => {
     if (!activeProfileId) return;
@@ -212,7 +224,7 @@ export default function Transactions() {
           <h1>Transactions</h1>
           <div className="subtitle">{total} record{total === 1 ? '' : 's'}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="header-actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -274,7 +286,19 @@ export default function Transactions() {
         <TransactionForm categories={categories} initial={editing} onSubmit={handleEdit} onCancel={() => setEditing(null)} />
       )}
 
-      <div className="filter-bar">
+      {/* On phones the filters fold away behind this button so the list
+          itself is on screen; on desktop the button is hidden and the
+          filters always show. */}
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm filters-toggle"
+        aria-expanded={showFilters}
+        aria-controls="tx-filters"
+        onClick={() => setShowFilters((v) => !v)}
+      >
+        {showFilters ? 'Hide filters' : `Filters${activeFilterCount ? ` (${activeFilterCount})` : ''}`}
+      </button>
+      <div id="tx-filters" className={`filter-bar tx-filters${showFilters ? ' open' : ''}`}>
         <div className="form-field">
           <label>Type</label>
           <select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value, categoryId: '' })}>
@@ -308,19 +332,23 @@ export default function Transactions() {
           <input type="date" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
         </div>
         <div className="form-field">
-          <label>Sort by</label>
-          <select value={filters.sort} onChange={(e) => setFilters({ ...filters, sort: e.target.value })}>
-            <option value="occurred_on">Date</option>
-            <option value="amount_cents">Amount</option>
-            <option value="description">Description</option>
-            <option value="type">Type</option>
-          </select>
-        </div>
-        <div className="form-field">
-          <label>Direction</label>
-          <select value={filters.dir} onChange={(e) => setFilters({ ...filters, dir: e.target.value })}>
-            <option value="desc">Descending</option>
-            <option value="asc">Ascending</option>
+          <label htmlFor="tx-sort">Sort</label>
+          {/* Column and direction in one plain-language choice. */}
+          <select
+            id="tx-sort"
+            value={`${filters.sort}:${filters.dir}`}
+            onChange={(e) => {
+              const [sort, dir] = e.target.value.split(':');
+              setFilters({ ...filters, sort, dir });
+            }}
+          >
+            <option value="occurred_on:desc">Newest first</option>
+            <option value="occurred_on:asc">Oldest first</option>
+            <option value="amount_cents:desc">Largest amount</option>
+            <option value="amount_cents:asc">Smallest amount</option>
+            <option value="description:asc">Description A–Z</option>
+            <option value="type:desc">Income first</option>
+            <option value="type:asc">Spending first</option>
           </select>
         </div>
       </div>
@@ -387,10 +415,10 @@ export default function Transactions() {
                   </td>
                   <td className="mono col-date">{formatDate(t.date)}</td>
                   <td className="col-desc">{t.description}</td>
-                  <td className="col-cat">{t.categoryName && <span className="tag">{t.categoryName}</span>}</td>
+                  <td className="col-cat">{t.categoryName && <span className="tag cat" style={{ '--cat': categoryColor(t.categoryName) }}>{t.categoryName}</span>}</td>
                   <td className="col-rec">{t.isRecurring && <span className="tag recurring">{t.recurringInterval}</span>}</td>
                   {isShared && <td className="col-by">{addedByLabel(t)}</td>}
-                  <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '-'}{formatMoney(t.amount, { currency })}</td>
+                  <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '−'}{formatMoney(t.amount, { currency })}</td>
                   <td className="col-actions">
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(t); setShowForm(false); }}>Edit</button>

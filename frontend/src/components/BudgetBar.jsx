@@ -1,4 +1,6 @@
 import { formatMoney } from '../utils/format.js';
+import { categoryColor } from '../utils/categoryColors.js';
+import { changeVsLastMonth } from '../utils/change.js';
 
 // ok under 80% of the budget, warn from 80%, over past 100%.
 function budgetTone(percent) {
@@ -9,11 +11,13 @@ function budgetTone(percent) {
 
 export default function BudgetBar({ budget, currency, compact = false }) {
   const tone = budgetTone(budget.percent);
+  const change = changeVsLastMonth(budget.spent, budget.lastMonthSpent, currency);
   const label = budget.remaining >= 0
     ? `${formatMoney(budget.remaining, { currency })} left`
     : `${formatMoney(-budget.remaining, { currency })} over`;
   return (
-    <div className={`budget-bar${compact ? ' compact' : ''}`}>
+    // The bar fills in the category's own note colour; only "over" turns red.
+    <div className={`budget-bar${compact ? ' compact' : ''}`} style={{ '--cat': categoryColor(budget.categoryName) }}>
       <div className="budget-bar-head">
         <span className="budget-name">{budget.categoryName}</span>
         <span className={`budget-left ${tone}`}>{label}</span>
@@ -24,6 +28,7 @@ export default function BudgetBar({ budget, currency, compact = false }) {
       </div>
       <div className="budget-sub">
         {formatMoney(budget.spent, { currency })} of {formatMoney(budget.amount, { currency })} · {budget.percent}%
+        {change && ` · ${change}`}
       </div>
     </div>
   );
