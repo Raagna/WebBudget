@@ -1,5 +1,5 @@
 const express = require('express');
-const { query, queryOne } = require('../db');
+const { query, queryOne, run } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { fromCents } = require('../middleware/validate');
@@ -184,6 +184,63 @@ router.get('/trends', asyncHandler(async (req, res) => {
     byMonth.get(r.month)[r.type === 'income' ? 'income' : 'expenses'] = fromCents(Number(r.total));
   }
   res.json({ trends: [...byMonth.values()] });
+}));
+
+// ---------- Layout ----------
+//
+// { widgets: ['safe', 'news', ...], layouts: { lg: [...], sm: [...] } }
+// widgets lists what's shown; each layout places those widgets on a grid
+// of COLS[breakpoint] columns as { i, x, y, w, h } in grid units. Only the
+// shape is checked here - the frontend ignores ids it doesn't know.
+const COLS = { lg: 12, sm: 1 };
+const WIDGET_ID = /^[a-z][a-z0-9-]{0,31}$/;
+const MAX_WIDGETS = 24;
+
+const isInt = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
+
+function cleanLayout(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const { widgets, layouts } = body;
+  if (!Array.isArray(widgets) || widgets.length > MAX_WIDGETS) return null;
+  if (!widgets.every((id) => typeof id === 'string' && WIDGET_ID.test(id))) return null;
+  if (new Set(widgets).size !== widgets.length) return null;
+  if (!layouts || typeof layouts !== 'object' || Array.isArray(layouts)) return null;
+
+  const out = { widgets: [...widgets], layouts: {} };
+  for (const [bp, items] of Object.entries(layouts)) {
+    const cols = COLS[bp];
+    if (!cols || !Array.isArray(items) || items.length > MAX_WIDGETS) return null;
+    const seen = new Set();
+    const clean = [];
+    for (const it of items) {
+      if (!it || typeof it !== 'object') return null;
+      const { i, x, y, w, h } = it;
+      if (!widgets.includes(i) || seen.has(i)) return null;
+      if (!isInt(w, 1, cols) || !isInt(x, 0, cols - w) || !isInt(y, 0, 2000) || !isInt(h, 1, 60)) return null;
+      seen.add(i);
+      clean.push({ i, x, y, w, h });
+    }
+    out.layouts[bp] = clean;
+  }
+  return out;
+}
+
+// GET /api/dashboard/layout -> { layout } (null = the default layout)
+router.get('/layout', asyncHandler(async (req, res) => {
+  const row = await queryOne(`SELECT dashboard_layout FROM users WHERE id = ?`, [req.userId]);
+  res.json({ layout: row?.dashboard_layout || null });
+}));
+
+// PUT /api/dashboard/layout  { layout }   layout: null resets to default
+router.put('/layout', asyncHandler(async (req, res) => {
+  if (req.body.layout === null) {
+    await run(`UPDATE users SET dashboard_layout = NULL WHERE id = ?`, [req.userId]);
+    return res.json({ layout: null });
+  }
+  const layout = cleanLayout(req.body.layout);
+  if (!layout) return res.status(400).json({ error: 'Invalid dashboard layout' });
+  await run(`UPDATE users SET dashboard_layout = ? WHERE id = ?`, [JSON.stringify(layout), req.userId]);
+  res.json({ layout });
 }));
 
 module.exports = router;
