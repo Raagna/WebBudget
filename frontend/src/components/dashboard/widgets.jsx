@@ -8,6 +8,7 @@ import { categoryColor } from '../../utils/categoryColors.js';
 import { changeVsLastMonth } from '../../utils/change.js';
 import InvestmentsCard from '../InvestmentsCard.jsx';
 import NewsCard from '../NewsCard.jsx';
+import RedditCard from '../RedditCard.jsx';
 
 // Every dashboard widget. Each one fills the grid cell it's given (the
 // user picks the size), so cards stretch to 100% height and anything
@@ -249,5 +250,10 @@ export const WIDGETS = {
     title: 'Income and spending',
     size: { w: 12, h: 9 }, min: { w: 4, h: 7 },
     render: (ctx) => <TrendCard {...ctx} />,
+  },
+  reddit: {
+    title: 'Reddit',
+    size: { w: 5, h: 14 }, min: { w: 3, h: 8 },
+    render: () => <RedditCard />,
   },
 };

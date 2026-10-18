@@ -1,21 +1,10 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
+import { timeAgo } from '../utils/format.js';
 
 // All the API sends (up to 12): a taller widget shows more of them, and
 // the rest scroll inside it.
 const SHOWN = 12;
-
-function ago(iso) {
-  if (!iso) return '';
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days} d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 // General financial headlines. Quiet on purpose: a short list that links
 // out, secondary to the money on the rest of the dashboard. It's a
@@ -44,7 +33,7 @@ export default function NewsCard() {
           {items.slice(0, SHOWN).map((n) => (
             <li key={n.link}>
               <a href={n.link} target="_blank" rel="noopener noreferrer">{n.title}</a>
-              <span className="news-meta">{n.source}{n.publishedAt ? ` · ${ago(n.publishedAt)}` : ''}</span>
+              <span className="news-meta">{n.source}{n.publishedAt ? ` · ${timeAgo(n.publishedAt)}` : ''}</span>
             </li>
           ))}
         </ul>
