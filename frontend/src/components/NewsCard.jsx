@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
 
-const SHOWN = 6;
+// All the API sends (up to 12): a taller widget shows more of them, and
+// the rest scroll inside it.
+const SHOWN = 12;
 
 function ago(iso) {
   if (!iso) return '';
@@ -16,8 +18,9 @@ function ago(iso) {
 }
 
 // General financial headlines. Quiet on purpose: a short list that links
-// out, secondary to the money on the rest of the dashboard. Hidden
-// entirely if the news can't load - it's a bonus, not something to fix.
+// out, secondary to the money on the rest of the dashboard. It's a
+// widget the user placed, so it keeps its spot (with a short note) even
+// when the news can't load.
 export default function NewsCard() {
   const [items, setItems] = useState(null);
 
@@ -29,13 +32,13 @@ export default function NewsCard() {
     return () => { cancelled = true; };
   }, []);
 
-  if (items !== null && items.length === 0) return null;
-
   return (
     <div className="card">
       <div className="card-title">Financial news</div>
       {items === null ? (
         <div className="empty-state">Loading headlines…</div>
+      ) : items.length === 0 ? (
+        <div className="empty-state">No headlines right now. Check back later.</div>
       ) : (
         <ul className="news-list">
           {items.slice(0, SHOWN).map((n) => (

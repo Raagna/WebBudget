@@ -217,17 +217,84 @@ input, select, textarea { font-family: var(--font-body); font-size: 14px; color:
   padding: 20px 22px;
 }
 
-.chart-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; margin-bottom: 26px; }
-@media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
-
 .card-title { font-size: 17px; font-weight: 800; margin-bottom: 14px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .card-title a { font-size: 13px; font-weight: 700; text-decoration: none; }
 .card-title a:hover { text-decoration: underline; }
 
-/* ---------- Dashboard: the note panel ---------- */
+/* ---------- Dashboard: the widget grid ----------
+   Each widget fills the cell the user gave it (react-grid-layout places
+   them on 12 columns of 20px rows). Content taller than its cell scrolls
+   inside it, and each widget is a size container so what's inside can
+   adapt to the widget's width rather than the window's. */
 
-.dash-top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 18px; margin-bottom: 18px; }
-@media (max-width: 1000px) { .dash-top { grid-template-columns: 1fr; } }
+.dash-grid { margin: 0 -2px 26px; }
+.widget { display: flex; flex-direction: column; min-width: 0; container-type: inline-size; }
+.widget-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.dash-grid .widget-body > .card,
+.dash-grid .widget-body > .note-panel { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.dash-grid .widget-body > .card { display: flex; flex-direction: column; overflow-x: hidden; }
+.dash-grid .widget-body > .strip-stack { flex: 1 1 auto; min-height: 0; }
+.dash-grid .strip-stack > * { flex: 1 1 0; }
+.card-fill { flex: 1 1 auto; min-height: 0; }
+
+/* Phones: one column at natural heights, as before customizing existed. */
+.phone-stack { display: flex; flex-direction: column; gap: 18px; margin-bottom: 26px; }
+.phone-stack .card-fill { height: 240px; flex: none; }
+.phone-stack.editing { gap: 8px; }
+
+/* Customizing: a toolbar above, and a bar on every widget to move it,
+   size it or take it away. */
+.edit-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px;
+  margin: -8px 0 18px; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop);
+}
+.edit-bar p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+.edit-bar strong { color: var(--ink); }
+.edit-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.edit-hint-phone { display: none; }
+@media (max-width: 899px) { .edit-hint-wide { display: none; } .edit-hint-phone { display: inline; } }
+
+.widget-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px;
+  margin-bottom: 8px; padding: 6px 6px 6px 12px;
+  background: var(--rail); color: var(--rail-ink); border-radius: var(--radius-sm);
+}
+.widget-handle, .widget-title { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; font-weight: 700; font-size: 14px; }
+.widget-handle { cursor: grab; user-select: none; touch-action: none; }
+.widget-handle:active { cursor: grabbing; }
+.widget-handle .grip { color: var(--rail-hi); font-size: 16px; line-height: 1; }
+.widget-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.widget-bar .widget-size select { min-height: 30px; padding: 3px 9px; font-size: 13px; background-position: right 9px center; }
+/* On the grid the bar floats over the top of the widget, so customizing
+   never changes how much room the widget's own content has. */
+.dash-grid .widget-bar { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 3; margin: 0; box-shadow: var(--shadow-pop); }
+.dash-grid.editing .widget-body { opacity: 0.8; }
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent-soft); opacity: 1; border: 2px dashed var(--accent); border-radius: var(--radius);
+}
+.react-grid-item.react-draggable-dragging, .react-grid-item.resizing { z-index: 10; }
+.react-grid-item.react-draggable-dragging .widget-body { box-shadow: var(--shadow-pop); border-radius: var(--radius); }
+.dash-grid .react-resizable-handle { z-index: 2; }
+.dash-grid .react-resizable-handle-se { width: 22px; height: 22px; }
+/* Widgets only glide while customizing (making room for the one being
+   dragged). Otherwise the grid's first width measurement would slide the
+   whole dashboard into place on every visit. */
+.dash-grid:not(.editing) .react-grid-item { transition: none; }
+@media (prefers-reduced-motion: reduce) { .react-grid-item { transition: none; } }
+
+/* Narrow widgets: the note stacks like it does on a phone, and the
+   recent list drops its category column. */
+@container (max-width: 560px) {
+  .note-panel { grid-template-columns: 1fr; grid-template-areas: 'head' 'caption' 'window' 'sum'; gap: 14px; padding: 20px 18px 18px; }
+}
+@container (max-width: 480px) {
+  table.ledger .col-cat { display: none; }
+}
+
+/* ---------- Dashboard: the note panel ---------- */
 
 /* The one note-like surface in the app. The fine concentric lines are the
    engraved guilloche of a banknote; the window is a real readout. */
@@ -300,7 +367,6 @@ input, select, textarea { font-family: var(--font-body); font-size: 14px; color:
 
 /* Category budget strips beside the note: each in its denomination colour. */
 .strip-stack { display: flex; flex-direction: column; gap: 10px; }
-@media (min-width: 1001px) { .strip-stack > * { flex: 1 1 0; } }
 .cat-strip {
   --cat: var(--accent);
   display: flex; flex-direction: column; justify-content: center; text-decoration: none;
@@ -353,10 +419,11 @@ table.ledger td.amount.expense { color: var(--ink); }
 .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .form-field { display: flex; flex-direction: column; gap: 6px; }
 .form-field label { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
-.form-field input, .form-field select, .budget-actions input {
+.form-field input, .form-field select, .budget-actions input, .edit-actions select, .widget-size select {
   padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
   background-color: var(--surface); color: var(--ink); min-height: 42px;
 }
+.edit-actions select:focus-visible, .widget-size select:focus-visible { outline: 2px solid var(--rail-hi); outline-offset: 1px; }
 select {
   appearance: none; -webkit-appearance: none; padding-right: 34px !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%234f5b55' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
