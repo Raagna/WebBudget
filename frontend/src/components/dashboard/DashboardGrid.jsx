@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import GridLayout, { WidthProvider } from 'react-grid-layout';
+import { useEffect, useRef, useState } from 'react';
+import { Responsive, WidthProvider } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { COLS, ROW_HEIGHT, MARGIN, moveOnPhone, removeWidget, resizeWidget } from './layout.js';
+import { COLS, BREAKPOINTS, GRIDS, ROW_HEIGHT, MARGIN, moveOnPhone, removeWidget, resizeWidget } from './layout.js';
 
-const Grid = WidthProvider(GridLayout);
+const Grid = WidthProvider(Responsive);
 
 // Below this width the dashboard is one stacked column (as before), so a
 // widget is as tall as its content instead of a fixed number of rows.
@@ -22,8 +22,17 @@ function usePhone() {
 }
 
 // Size menus: the keyboard (and precise) way to resize, next to dragging
-// a corner. Widths are columns out of 12; heights are grid rows.
-const WIDTHS = [[3, 'Quarter'], [4, 'Third'], [5, '5/12'], [6, 'Half'], [7, '7/12'], [8, 'Two thirds'], [9, 'Three quarters'], [12, 'Full width']];
+// a corner. Widths are columns of the current grid (12, or 18 on a wide
+// screen); heights are grid rows.
+const FRACTIONS = [[1 / 4, 'Quarter'], [1 / 3, 'Third'], [1 / 2, 'Half'], [2 / 3, 'Two thirds'], [3 / 4, 'Three quarters'], [1, 'Full width']];
+function widthOptions(cols) {
+  const out = [];
+  for (let n = 1; n <= cols; n++) {
+    const named = FRACTIONS.find(([f]) => Math.abs(f * cols - n) < 1e-9);
+    out.push([n, named ? named[1] : `${n}/${cols}`]);
+  }
+  return out;
+}
 const HEIGHTS = [[6, 'Compact'], [9, 'Short'], [12, 'Medium'], [14, 'Tall'], [18, 'Taller'], [24, 'Tallest']];
 
 function SizeSelect({ label, value, options, min, onChange }) {
@@ -42,7 +51,7 @@ function SizeSelect({ label, value, options, min, onChange }) {
 
 // The bar a widget wears while customizing: grab it to move the widget,
 // pick a size, or take the widget off the dashboard.
-function WidgetBar({ id, widget, item, phone, first, last, onChange, layout, catalog }) {
+function WidgetBar({ id, widget, item, grid, phone, first, last, onChange, layout, catalog }) {
   return (
     <div className="widget-bar">
       <span className={phone ? 'widget-title' : 'widget-handle'} title={phone ? undefined : 'Drag to move'}>
@@ -59,10 +68,10 @@ function WidgetBar({ id, widget, item, phone, first, last, onChange, layout, cat
           </>
         ) : (
           <>
-            <SizeSelect label={`${widget.title} width`} value={item.w} options={WIDTHS} min={widget.min.w}
-                        onChange={(w) => onChange(resizeWidget(layout, id, { w }, catalog))} />
+            <SizeSelect label={`${widget.title} width`} value={item.w} options={widthOptions(COLS[grid])} min={widget.min.w}
+                        onChange={(w) => onChange(resizeWidget(layout, grid, id, { w }, catalog))} />
             <SizeSelect label={`${widget.title} height`} value={item.h} options={HEIGHTS} min={widget.min.h}
-                        onChange={(h) => onChange(resizeWidget(layout, id, { h }, catalog))} />
+                        onChange={(h) => onChange(resizeWidget(layout, grid, id, { h }, catalog))} />
           </>
         )}
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange(removeWidget(layout, id))}
@@ -72,8 +81,16 @@ function WidgetBar({ id, widget, item, phone, first, last, onChange, layout, cat
   );
 }
 
+const samePlace = (a, b) => a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
 export default function DashboardGrid({ layout, catalog, ctx, editing, onChange }) {
   const phone = usePhone();
+  // Which grid is showing (12 or 18 columns) - the size menus and the
+  // layout being edited follow it.
+  // The ref is for onLayoutChange: the grid reports the new breakpoint's
+  // layout right after switching, before React has re-rendered.
+  const [grid, setGrid] = useState('lg');
+  const gridRef = useRef('lg');
 
   if (phone) {
     const order = [...layout.layouts.sm].sort((a, b) => a.y - b.y).map((it) => it.i).filter((id) => catalog[id]);
@@ -94,11 +111,16 @@ export default function DashboardGrid({ layout, catalog, ctx, editing, onChange 
     );
   }
 
-  const items = layout.layouts.lg.map((it) => ({ ...it, minW: catalog[it.i].min.w, minH: catalog[it.i].min.h }));
+  const withMins = (items) => items.map((it) => ({ ...it, minW: catalog[it.i].min.w, minH: catalog[it.i].min.h }));
+  const layouts = {};
+  for (const g of GRIDS) layouts[g] = withMins(layout.layouts[g]);
+  const items = layouts[grid] || layouts.lg;
+
   return (
     <Grid
       className={`dash-grid${editing ? ' editing' : ''}`}
-      layout={items}
+      layouts={layouts}
+      breakpoints={BREAKPOINTS}
       cols={COLS}
       rowHeight={ROW_HEIGHT}
       margin={[MARGIN, MARGIN]}
@@ -107,21 +129,21 @@ export default function DashboardGrid({ layout, catalog, ctx, editing, onChange 
       isResizable={editing}
       draggableHandle=".widget-handle"
       resizeHandles={['se', 'e', 's']}
-      onLayoutChange={(next) => {
+      onBreakpointChange={(bp) => { gridRef.current = bp; setGrid(bp); }}
+      onLayoutChange={(current) => {
         // The grid reports a layout on every render too; only an edit in
-        // progress should change what gets saved.
+        // progress, on the grid being shown, should change what's saved.
         if (!editing) return;
-        const lg = next.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
-        const same = lg.every((it) => {
-          const old = layout.layouts.lg.find((o) => o.i === it.i);
-          return old && old.x === it.x && old.y === it.y && old.w === it.w && old.h === it.h;
-        });
-        if (!same) onChange({ ...layout, layouts: { ...layout.layouts, lg } });
+        const g = gridRef.current;
+        const next = current.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+        const before = layout.layouts[g];
+        if (next.every((it) => samePlace(it, before.find((o) => o.i === it.i)))) return;
+        onChange({ ...layout, layouts: { ...layout.layouts, [g]: next } });
       }}
     >
       {items.map((item) => (
         <div key={item.i} className="widget">
-          {editing && <WidgetBar id={item.i} widget={catalog[item.i]} item={item} layout={layout} catalog={catalog} onChange={onChange} />}
+          {editing && <WidgetBar id={item.i} widget={catalog[item.i]} item={item} grid={grid} layout={layout} catalog={catalog} onChange={onChange} />}
           {/* inert while customizing: a drag that ends on a link shouldn't
               follow it, and Tab should reach the widget tools, not the
               links inside every card. */}

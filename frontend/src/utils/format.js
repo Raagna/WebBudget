@@ -31,6 +31,19 @@ export function daysBetween(fromIso, toIso) {
   return Math.round((Date.parse(toIso + 'T00:00:00Z') - Date.parse(fromIso + 'T00:00:00Z')) / 86_400_000);
 }
 
+// "just now", "5 min ago", "3 h ago", "2 d ago", then a date.
+export function timeAgo(iso, now = Date.now()) {
+  if (!iso) return '';
+  const mins = Math.round((now - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function currentYearMonth() {
   return localToday().slice(0, 7);
 }

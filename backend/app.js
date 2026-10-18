@@ -13,6 +13,7 @@ const budgetRoutes = require('./routes/budgets');
 const scanRoutes = require('./routes/scan');
 const investmentRoutes = require('./routes/investments');
 const newsRoutes = require('./routes/news');
+const redditRoutes = require('./routes/reddit');
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/news', newsRoutes);
+app.use('/api/reddit', redditRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

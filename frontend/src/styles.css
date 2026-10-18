@@ -202,6 +202,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14px; color:
 .logout-btn:hover { background: #2a5d4c; }
 
 .main-content { flex: 1; min-width: 0; padding: 32px 40px 72px; max-width: 1240px; }
+.main-content.full-width { max-width: none; }
 
 .page-header { margin-bottom: 26px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-header h1 { font-size: 32px; line-height: 1.1; }
@@ -545,6 +546,24 @@ table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background:
 .news-list a { color: var(--ink); font-weight: 600; text-decoration: none; line-height: 1.35; }
 .news-list a:hover, .news-list a:focus-visible { color: var(--accent-strong); text-decoration: underline; }
 .news-meta { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-soft); }
+
+/* Reddit widget: the same quiet list, plus a small "Manage" panel for
+   what's followed. */
+.link-button { background: none; border: none; padding: 0; font: inherit; font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer; }
+.link-button:hover, .link-button:focus-visible { text-decoration: underline; }
+.reddit-manage { display: flex; flex-direction: column; gap: 10px; padding: 12px; margin-bottom: 14px; background: var(--ground); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.reddit-manage label { display: block; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 5px; }
+.inline-field { display: flex; gap: 6px; }
+.inline-field input { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.inline-field input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+button.tag { border: 1px solid var(--line); cursor: pointer; font-family: inherit; }
+button.tag:hover { border-color: var(--accent); }
+.chip-x { background: none; border: none; padding: 0 0 0 2px; font-size: 16px; line-height: 1; color: var(--ink-soft); cursor: pointer; }
+.chip-x:hover { color: var(--ink); }
+.reddit-heading { font-size: 13px; font-weight: 700; color: var(--ink-soft); margin: 4px 0 6px; }
+.news-list + .reddit-heading { margin-top: 16px; }
+.reddit-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 
 .budget-list { list-style: none; margin: 0; padding: 0; }
 .budget-list > li { padding: 16px 0; border-bottom: 1px solid var(--line); }

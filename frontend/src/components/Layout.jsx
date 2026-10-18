@@ -97,7 +97,10 @@ export default function Layout({ children }) {
           clicks) while the menu is actually open. */}
       {menuOpen && <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />}
 
-      <main className="main-content">{children}</main>
+      {/* The dashboard uses the whole window, so a wide screen's spare
+          room on the right can hold widgets; reading pages keep a
+          comfortable line length. */}
+      <main className={`main-content${location.pathname === '/' ? ' full-width' : ''}`}>{children}</main>
     </div>
   );
 }

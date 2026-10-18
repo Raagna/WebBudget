@@ -46,7 +46,7 @@ test('malformed layouts are rejected', async () => {
     { widgets: 'safe', layouts: {} },
     { widgets: ['safe', 'safe'], layouts: {} }, // duplicate widget
     { widgets: ['Safe!'], layouts: {} }, // not a widget id
-    { widgets: ['safe'], layouts: { xl: [] } }, // unknown breakpoint
+    { widgets: ['safe'], layouts: { xxl: [] } }, // unknown breakpoint
     { widgets: ['safe'], layouts: { lg: [{ i: 'news', x: 0, y: 0, w: 4, h: 4 }] } }, // not a shown widget
     { widgets: ['safe'], layouts: { lg: [{ i: 'safe', x: 6, y: 0, w: 7, h: 4 }] } }, // past column 12
     { widgets: ['safe'], layouts: { lg: [{ i: 'safe', x: 0, y: 0, w: 4, h: 0 }] } }, // no height
