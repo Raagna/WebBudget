@@ -455,6 +455,30 @@ table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background:
 .budget-summary .over b { color: var(--negative); }
 .budget-summary .change { display: block; font-size: 13px; color: var(--ink-soft); }
 
+/* Investments. A change in value is green when up and red only when
+   down, the same rule as everywhere else. */
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-soft); }
+.delta.up { color: var(--positive); }
+.delta.down { color: var(--negative); }
+.holding-name { display: block; font-size: 12.5px; font-weight: 500; color: var(--ink-soft); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fine-print { font-size: 12.5px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.5; }
+.portfolio-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 12px; color: var(--ink-soft); font-size: 14px; }
+.portfolio-total b { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.holding-list { list-style: none; margin: 0; padding: 0; }
+.holding-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.holding-list .sym { font-weight: 700; min-width: 0; }
+.holding-list .sym small { display: block; font-weight: 500; font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.holding-list .val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.holding-list .val .delta { display: block; font-size: 12.5px; }
+
+/* Financial news: a quiet list of headlines that link out. */
+.news-list { list-style: none; margin: 0; padding: 0; }
+.news-list li { padding: 10px 0; border-top: 1px solid var(--line); }
+.news-list li:first-child { border-top: none; padding-top: 0; }
+.news-list a { color: var(--ink); font-weight: 600; text-decoration: none; line-height: 1.35; }
+.news-list a:hover, .news-list a:focus-visible { color: var(--accent-strong); text-decoration: underline; }
+.news-meta { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-soft); }
+
 .budget-list { list-style: none; margin: 0; padding: 0; }
 .budget-list > li { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .budget-list > li:first-child { padding-top: 0; }

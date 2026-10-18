@@ -11,6 +11,8 @@ const billRoutes = require('./routes/bills');
 const dashboardRoutes = require('./routes/dashboard');
 const budgetRoutes = require('./routes/budgets');
 const scanRoutes = require('./routes/scan');
+const investmentRoutes = require('./routes/investments');
+const newsRoutes = require('./routes/news');
 
 const app = express();
 
@@ -56,6 +58,8 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/budgets', budgetRoutes);
+app.use('/api/investments', investmentRoutes);
+app.use('/api/news', newsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
