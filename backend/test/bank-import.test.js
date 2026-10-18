@@ -192,7 +192,7 @@ test('bank rows are auto-categorized from past transactions first, then keywords
 test('keywords match whole words and respect income vs expense', () => {
   assert.equal(keywordCategory('UBER EATS TORONTO', 'expense'), 'Food');
   assert.equal(keywordCategory('UBER TRIP 1234', 'expense'), 'Transportation');
-  assert.equal(keywordCategory('CURRENT ACCOUNT FEE', 'expense'), null); // not "rent"
+  assert.equal(keywordCategory('CURRENT ACCOUNT FEE', 'expense'), 'Bank Fees'); // not "rent"
   assert.equal(keywordCategory('PAYROLL DEP', 'expense'), null);
   assert.equal(keywordCategory('PAYROLL DEP', 'income'), 'Salary/Income');
 });

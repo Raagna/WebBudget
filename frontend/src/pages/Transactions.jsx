@@ -261,7 +261,10 @@ export default function Transactions() {
                     Imported <strong>{importResult.imported}</strong> of {importResult.totalRows} row{importResult.totalRows === 1 ? '' : 's'}
                     {importResult.format === 'td' && ' from a TD bank file'}.
                     {importResult.duplicates > 0 && ` ${importResult.duplicates} skipped as already imported.`}
-                    {importResult.autoCategorized > 0 && ` ${importResult.autoCategorized} auto-categorized.`}
+                    {importResult.autoCategorized > 0 && ` ${importResult.autoCategorized} auto-categorized${importResult.lookedUp > 0 ? ` (${importResult.lookedUp} looked up by the local model)` : ''}.`}
+                    {importResult.recurring > 0 && ` ${importResult.recurring} marked recurring.`}
+                    {importResult.categorizedExisting > 0 && ` Filled in the category on ${importResult.categorizedExisting} earlier row${importResult.categorizedExisting === 1 ? '' : 's'}.`}
+                    {importResult.recurringExisting > 0 && ` Marked ${importResult.recurringExisting} earlier row${importResult.recurringExisting === 1 ? '' : 's'} recurring.`}
                     {importResult.warnings.length > 0 && ` ${importResult.warnings.length} warning${importResult.warnings.length === 1 ? '' : 's'}.`}
                     {importResult.errors.length > 0 && ` ${importResult.errors.length} skipped with errors.`}
                   </p>

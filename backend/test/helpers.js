@@ -31,6 +31,9 @@ function configure(name) {
   // 20-per-15-minutes auth rate limit. Trusting one proxy hop lets each
   // request carry its own client IP in X-Forwarded-For (see api() below).
   process.env.TRUST_PROXY = '1';
+  // Imports must never reach a real Ollama on the machine running the
+  // tests; the tests that cover the model lookup run a fake one.
+  process.env.IMPORT_MODEL_LOOKUP = 'off';
   delete process.env.RENDER;
   return schema;
 }

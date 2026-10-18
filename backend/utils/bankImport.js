@@ -177,9 +177,18 @@ function assignImportHashes(profileId, records) {
 // ---------- Auto-categorization ----------
 
 // Looser than normalizeDescription: digits and punctuation are dropped so
-// "TIM HORTONS #1234" and "Tim Hortons #5678" are the same merchant.
+// "TIM HORTONS #1234" and "Tim Hortons #5678" are the same merchant. TD
+// also adds noise that isn't part of the name: a masked e-transfer
+// reference ("SEND E-TFR ***Du6") and a card marker at the end ("AMAZON
+// _V", "MCDONALDS 4954 _M"). Both are dropped, so every e-transfer shares
+// one key and a masked "***stm" can't read as the STM transit keyword.
 function merchantKey(description) {
-  return description.toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+  return description
+    .toLowerCase()
+    .replace(/\*{2,}\S*/g, ' ')
+    .replace(/_[a-z]\s*$/, ' ')
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
 }
 
 // Keywords for the default categories, matched as whole words/phrases
@@ -189,21 +198,44 @@ function merchantKey(description) {
 const KEYWORDS = [
   ['Salary/Income', 'income', ['payroll', 'salary', 'direct deposit', 'dir dep', 'pay dep']],
   ['Rent/Mortgage', 'expense', ['rent', 'mortgage', 'mtg']],
-  ['Subscription', 'expense', ['netflix', 'spotify', 'disney plus', 'disneyplus', 'crave', 'apple com bill', 'youtube premium', 'amazon prime', 'prime video', 'patreon', 'audible']],
-  ['Utilities', 'expense', ['hydro', 'enbridge', 'rogers', 'bell canada', 'bell mobility', 'telus', 'fido', 'koodo', 'virgin plus', 'freedom mobile', 'alectra', 'fortisbc', 'water bill']],
-  ['Groceries', 'expense', ['loblaws', 'no frills', 'nofrills', 'sobeys', 'metro', 'safeway', 'freshco', 'food basics', 'superstore', 'farm boy', 'longos', 't t', 'whole foods', 'iga', 'save on foods', 'fortinos', 'zehrs', 'costco', 'grocery', 'walmart supercenter']],
-  ['Food', 'expense', ['tim hortons', 'starbucks', 'mcdonald', 'mcdonalds', 'subway', 'a w', 'uber eats', 'ubereats', 'doordash', 'skipthedishes', 'skip the dishes', 'restaurant', 'pizza', 'cafe', 'coffee', 'wendy', 'wendys', 'burger king', 'popeyes', 'harvey', 'chipotle', 'kfc', 'dominos', 'second cup']],
-  ['Transportation', 'expense', ['presto', 'uber', 'lyft', 'petro canada', 'esso', 'shell', 'husky', 'pioneer', 'ultramar', 'chevron', 'ttc', 'go transit', 'parking', 'impark', 'green p', 'translink', 'stm']],
-  ['Healthcare', 'expense', ['shoppers drug mart', 'pharmacy', 'pharmasave', 'rexall', 'dental', 'dentist', 'clinic', 'physio', 'optometr']],
+  ['Subscription', 'expense', ['netflix', 'spotify', 'disney plus', 'disneyplus', 'crave', 'apple com bill', 'youtube premium', 'amazon prime', 'prime video', 'patreon', 'audible',
+    'adobe', 'microsoft', 'google storage', 'icloud', 'openai', 'chatgpt', 'anthropic', 'claude ai', 'github', 'dropbox', 'crunchyroll']],
+  ['Utilities', 'expense', ['hydro', 'enbridge', 'rogers', 'bell canada', 'bell mobility', 'telus', 'fido', 'koodo', 'virgin plus', 'freedom mobile', 'alectra', 'fortisbc', 'water bill',
+    'chatr', 'lucky mobile', 'public mobile', 'gigsky', 'airalo', 'starlink', 'teksavvy', 'shaw', 'videotron', 'epcor', 'atco']],
+  ['Groceries', 'expense', ['loblaws', 'no frills', 'nofrills', 'sobeys', 'metro', 'safeway', 'freshco', 'food basics', 'superstore', 'farm boy', 'longos', 't t', 'whole foods', 'iga', 'save on foods', 'fortinos', 'zehrs', 'costco', 'grocery', 'walmart supercenter',
+    'adonis', 'instacart', 'voila', 'pc express', 'm m food market', 'bulk barn', 'independent grocer']],
+  ['Food', 'expense', ['tim hortons', 'starbucks', 'mcdonald', 'mcdonalds', 'subway', 'a w', 'uber eats', 'ubereats', 'doordash', 'skipthedishes', 'skip the dishes', 'restaurant', 'pizza', 'cafe', 'coffee', 'wendy', 'wendys', 'burger king', 'popeyes', 'harvey', 'chipotle', 'kfc', 'dominos', 'second cup',
+    'lcbo', 'beer store', 'saq', 'bcl', 'mary browns', 'osmows', 'taco bell', 'dairy queen', 'five guys', 'swiss chalet', 'east side marios', 'kelseys', 'montanas', 'the keg', 'booster juice', 'freshii']],
+  ['Transportation', 'expense', ['presto', 'uber', 'lyft', 'petro canada', 'esso', 'shell', 'husky', 'pioneer', 'ultramar', 'chevron', 'ttc', 'go transit', 'parking', 'impark', 'green p', 'translink', 'stm', 'canadian tire gas']],
+  ['Healthcare', 'expense', ['shoppers drug mart', 'shoppers', 'pharmacy', 'pharmasave', 'rexall', 'dental', 'dentist', 'clinic', 'physio', 'optometr',
+    'jean coutu', 'lawtons', 'london drugs', 'lifelabs', 'life labs', 'dynacare', 'goodlife', 'planet fitness', 'ymca', 'fit4less', 'anytime fitness']],
   ['Entertainment', 'expense', ['cineplex', 'ticketmaster', 'steam', 'playstation', 'xbox', 'nintendo', 'landmark cinemas']],
-  ['Shopping', 'expense', ['amazon', 'amzn', 'best buy', 'canadian tire', 'winners', 'ikea', 'home depot', 'dollarama', 'walmart', 'hudson s bay', 'sport chek', 'indigo']],
+  ['Shopping', 'expense', ['amazon', 'amzn', 'best buy', 'canadian tire', 'winners', 'ikea', 'home depot', 'dollarama', 'walmart', 'hudson s bay', 'sport chek', 'indigo',
+    'shein', 'temu', 'aliexpress', 'ebay', 'etsy', 'apple store', 'staples', 'michaels', 'marshalls', 'homesense', 'old navy', 'uniqlo', 'zara', 'lululemon', 'mark s', 'simons', 'giant tiger', 'value village', 'lowes', 'rona', 'home hardware']],
 ].map(([category, type, words]) => [category, type, words.map(merchantKey)]);
+
+// Bank codes rather than merchant names, matched against the raw
+// description (upper-cased) after the merchant keywords have had their
+// turn - so "E-TRANSFER RENT" is still Rent, and only a bare e-transfer
+// falls through to Transfers. 'both' fits income and expense rows.
+const BANK_RULES = [
+  ['Bank Fees', 'expense', /\bNSF\b|\bFEES?\b|SERVICE CHARGE|OVERDRAFT|OVERDRAWN|INTEREST CHARGE|\bOD INT\b/],
+  ['Investments', 'expense', /\bMTF\b|MUTUAL FUND|\bRRSP\b|\bTFSA\b|\bRESP\b|\bFHSA\b|WEALTHSIMPLE|QUESTRADE|\bGIC\b/],
+  ['Transfers', 'both', /E-?TFR|E-?TRANSFER|INTERAC|\bTFR\b|\b(SSV|PTS) TO\b|TRANSFER (TO|FROM)/],
+  ['Transportation', 'expense', /^PRES\//], // a PRESTO tap, e.g. "PRES/SRQ9RL95RW"
+  ['Other', 'income', /STUDENT LOAN|\bOSAP\b|\bNSLSC\b|\bGST\b|\bCCB\b|CANADA FED|\bRTN\b|REFUND|REBATE/],
+];
 
 function keywordCategory(description, type) {
   const padded = ` ${merchantKey(description)} `;
   for (const [category, catType, words] of KEYWORDS) {
     if (catType !== type) continue;
     if (words.some((w) => padded.includes(` ${w} `))) return category;
+  }
+  const raw = description.toUpperCase();
+  for (const [category, catType, re] of BANK_RULES) {
+    if (catType !== type && catType !== 'both') continue;
+    if (re.test(raw)) return category;
   }
   return null;
 }

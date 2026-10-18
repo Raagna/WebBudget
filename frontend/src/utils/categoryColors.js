@@ -27,6 +27,9 @@ const BY_NAME = {
   subscription: '#4B4FA3', // indigo, between the $5 and $10 notes
   healthcare: '#0F6A55',   // deep green-teal
   'salary/income': NOTE_COLORS.green,
+  transfers: '#2E5266',     // deep steel: money moving, not spent
+  'bank fees': '#6B5A4A',   // muted brown-grey: a cost, but not a warning
+  investments: '#4F5B1F',   // dark olive
   other: '#5B6470',
   uncategorized: '#5B6470',
 };
