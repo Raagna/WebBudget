@@ -9,6 +9,8 @@ import { useProfiles } from '../context/ProfileContext.jsx';
 import { formatMoney, formatDate, localToday } from '../utils/format.js';
 import { categoryColor } from '../utils/categoryColors.js';
 import { changeVsLastMonth } from '../utils/change.js';
+import InvestmentsCard from '../components/InvestmentsCard.jsx';
+import NewsCard from '../components/NewsCard.jsx';
 
 const AXIS = { fontSize: 12, fill: '#4f5b55' };
 const GRID = '#e3e8e3';
@@ -228,6 +230,13 @@ export default function Dashboard() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      {/* Money you hold, and the world outside: below the month's own
+          numbers, since they're context rather than today's decisions. */}
+      <div className="chart-grid">
+        <InvestmentsCard profileId={activeProfileId} />
+        <NewsCard />
       </div>
 
       <div className="card">
