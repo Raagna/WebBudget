@@ -4,6 +4,8 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { parseCsv, generateCsv, unneutralize } = require('../utils/csv');
 const { detectFormat, parseBankRows, assignImportHashes, merchantKey, guessCategory } = require('../utils/bankImport');
+const { modelCategorize } = require('../utils/modelCategorize');
+const { findRecurringSeries, seriesKey } = require('../utils/recurring');
 const {
   isNonEmptyString,
   isValidDate,
@@ -248,55 +250,33 @@ router.post(
     // reported rather than inserted again.
     assignImportHashes(profileId, records);
     const existing = records.length === 0 ? [] : await query(
-      `SELECT import_hash FROM transactions WHERE profile_id = ? AND import_hash = ANY(?)`,
+      `SELECT id, import_hash, category_id FROM transactions WHERE profile_id = ? AND import_hash = ANY(?)`,
       [profileId, records.map((r) => r.importHash)]
     );
-    const existingHashes = new Set(existing.map((r) => r.import_hash));
-    const duplicates = records.filter((r) => existingHashes.has(r.importHash)).map((r) => r.rowNum);
-    const toInsert = records.filter((r) => !existingHashes.has(r.importHash));
+    const existingByHash = new Map(existing.map((r) => [r.import_hash, r]));
+    const duplicates = records.filter((r) => existingByHash.has(r.importHash)).map((r) => r.rowNum);
+    const toInsert = records.filter((r) => !existingByHash.has(r.importHash));
 
-    // Auto-categorize bank rows (they never carry a category): first from
-    // how this profile categorized the same merchant before, then from
-    // description keywords. App-format files say their category
-    // explicitly, so a blank there stays blank.
-    let autoCategorized = 0;
-    if (toInsert.some((r) => r.autoCategorize)) {
-      const usable = await query(
-        `SELECT c.id, c.name FROM categories c
-         WHERE (c.user_id IS NULL OR c.user_id = ?)
-           AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = ? AND h.category_id = c.id)`,
-        [req.userId, req.userId]
-      );
-      const usableIds = new Set(usable.map((c) => c.id));
-      const past = await query(
-        `SELECT description, type, category_id FROM transactions
-         WHERE profile_id = ? AND category_id IS NOT NULL
-         ORDER BY occurred_on DESC, id DESC
-         LIMIT 5000`,
-        [profileId]
-      );
-      const history = new Map();
-      for (const t of past) {
-        // A shared profile can hold another member's custom categories,
-        // which this user can't see or pick - don't hand those out.
-        if (!usableIds.has(t.category_id)) continue;
-        const key = `${t.type}|${merchantKey(t.description)}`;
-        if (!history.has(key)) history.set(key, t.category_id); // newest first
-      }
-      const byName = new Map(usable.map((c) => [c.name.toLowerCase(), c.id]));
-      for (const r of toInsert) {
-        if (!r.autoCategorize || r.categoryId) continue;
-        r.categoryId = guessCategory(r, { history, byName });
-        if (r.categoryId) autoCategorized++;
-      }
-    }
+    // A bank row imported before categorization could place it is still
+    // uncategorized. Importing the same file again fills those in - the
+    // rows themselves stay skipped as duplicates.
+    const toFill = records
+      .filter((r) => r.autoCategorize && existingByHash.get(r.importHash)?.category_id === null)
+      .map((r) => ({ ...r, existingId: existingByHash.get(r.importHash).id }));
+
+    await autoCategorize(req.userId, profileId, [...toInsert, ...toFill]);
+    const autoCategorized = toInsert.filter((r) => r.categorizedBy).length;
+    const lookedUp = toInsert.filter((r) => r.categorizedBy === 'model').length;
+    const filled = toFill.filter((r) => r.categoryId);
+    const recurringUpdates = await detectRecurring(profileId, toInsert);
 
     // Insert all new rows in ONE database transaction. If any insert
     // fails, none are kept, so a failed import never leaves half a file
     // behind that a retry would then duplicate. ON CONFLICT covers the
     // same file being imported twice at once: the second copy's rows are
-    // counted as duplicates instead of failing the whole import.
-    const inserted = await withTransaction(async (tx) => {
+    // counted as duplicates instead of failing the whole import. The
+    // updates to earlier rows ride in the same transaction.
+    const { inserted, recurringExisting } = await withTransaction(async (tx) => {
       let n = 0;
       for (const r of toInsert) {
         const result = await tx.run(
@@ -308,7 +288,22 @@ router.post(
         );
         n += result.rowCount;
       }
-      return n;
+      for (const r of filled) {
+        await tx.run(
+          `UPDATE transactions SET category_id = ?, updated_at = NOW() WHERE id = ? AND category_id IS NULL`,
+          [r.categoryId, r.existingId]
+        );
+      }
+      let flagged = 0;
+      for (const [interval, ids] of recurringUpdates) {
+        const result = await tx.run(
+          `UPDATE transactions SET is_recurring = TRUE, recurring_interval = ?, updated_at = NOW()
+           WHERE id = ANY(?) AND is_recurring = FALSE`,
+          [interval, ids]
+        );
+        flagged += result.rowCount;
+      }
+      return { inserted: n, recurringExisting: flagged };
     });
 
     res.json({
@@ -317,12 +312,112 @@ router.post(
       duplicates: duplicates.length + (toInsert.length - inserted),
       duplicateRows: duplicates,
       autoCategorized,
+      lookedUp,
+      categorizedExisting: filled.length,
+      recurring: toInsert.filter((r) => r.autoCategorize && r.recurring).length,
+      recurringExisting,
       errors,
       warnings,
       totalRows: rows.length - (detected.format === 'td' && !detected.hasHeader ? 0 : 1),
     });
   })
 );
+
+// Gives bank rows (they never carry a category) one, in order of trust:
+//   1. how this profile categorized the same merchant before
+//   2. built-in merchant keywords, then bank codes (e-transfer, NSF...)
+//   3. the local model, for merchants nothing above recognizes
+// App-format files say their category explicitly, so a blank there stays
+// blank. Sets categoryId and categorizedBy ('rules' | 'model') on each
+// record it places.
+async function autoCategorize(userId, profileId, records) {
+  const pending = records.filter((r) => r.autoCategorize && !r.categoryId);
+  if (pending.length === 0) return;
+
+  const usable = await query(
+    `SELECT c.id, c.name, c.type FROM categories c
+     WHERE (c.user_id IS NULL OR c.user_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM hidden_categories h WHERE h.user_id = ? AND h.category_id = c.id)`,
+    [userId, userId]
+  );
+  const usableIds = new Set(usable.map((c) => c.id));
+  const past = await query(
+    `SELECT description, type, category_id FROM transactions
+     WHERE profile_id = ? AND category_id IS NOT NULL
+     ORDER BY occurred_on DESC, id DESC
+     LIMIT 5000`,
+    [profileId]
+  );
+  const history = new Map();
+  for (const t of past) {
+    // A shared profile can hold another member's custom categories,
+    // which this user can't see or pick - don't hand those out.
+    if (!usableIds.has(t.category_id)) continue;
+    const key = `${t.type}|${merchantKey(t.description)}`;
+    if (!history.has(key)) history.set(key, t.category_id); // newest first
+  }
+  const byName = new Map(usable.map((c) => [c.name.toLowerCase(), c.id]));
+
+  const unplaced = new Map(); // `${type}|${merchantKey}` -> lookup item
+  for (const r of pending) {
+    r.categoryId = guessCategory(r, { history, byName });
+    if (r.categoryId) { r.categorizedBy = 'rules'; continue; }
+    const key = merchantKey(r.description);
+    if (key && !unplaced.has(`${r.type}|${key}`)) {
+      unplaced.set(`${r.type}|${key}`, { key: `${r.type}|${key}`, description: r.description, type: r.type });
+    }
+  }
+
+  // One request per batch of distinct merchants, not per row: ten visits
+  // to the same unknown shop are one question.
+  const fromModel = await modelCategorize([...unplaced.values()], usable);
+  for (const r of pending) {
+    if (r.categoryId) continue;
+    const id = fromModel.get(`${r.type}|${merchantKey(r.description)}`);
+    if (id) { r.categoryId = id; r.categorizedBy = 'model'; }
+  }
+}
+
+// Flags new bank rows that belong to a weekly, monthly or yearly series
+// (see utils/recurring.js), looking back - and ahead - 400 days through
+// this profile's transactions so a once-a-month charge is caught one file
+// at a time. Rows the file or user already marked recurring are left
+// alone. Earlier rows in a newly found series get flagged too, so the
+// whole series reads the same in the list; returns those as
+// [[interval, ids]] for the caller's transaction.
+async function detectRecurring(profileId, toInsert) {
+  const bankRows = toInsert.filter((r) => r.autoCategorize);
+  if (bankRows.length === 0) return [];
+  const dates = bankRows.map((r) => r.date).sort();
+  const stored = await query(
+    `SELECT id, type, description, amount_cents, occurred_on, is_recurring FROM transactions
+     WHERE profile_id = ? AND occurred_on BETWEEN ?::date - 400 AND ?::date + 400
+     ORDER BY occurred_on DESC
+     LIMIT 20000`,
+    [profileId, dates[0], dates[dates.length - 1]]
+  );
+  const storedRows = stored.map((t) => ({
+    id: t.id, type: t.type, description: t.description, date: t.occurred_on, amountCents: t.amount_cents, isRecurring: t.is_recurring,
+  }));
+  const series = findRecurringSeries([...storedRows, ...bankRows]);
+  const keyOf = (r) => `${r.type}|${seriesKey(r.description)}`;
+
+  const touched = new Set();
+  for (const r of bankRows) {
+    const interval = series.get(keyOf(r));
+    if (!interval) continue;
+    touched.add(keyOf(r));
+    if (!r.recurring) { r.recurring = true; r.interval = interval; }
+  }
+  const updates = new Map(); // interval -> ids
+  for (const t of storedRows) {
+    if (t.isRecurring || !touched.has(keyOf(t))) continue;
+    const interval = series.get(keyOf(t));
+    if (!updates.has(interval)) updates.set(interval, []);
+    updates.get(interval).push(t.id);
+  }
+  return [...updates];
+}
 
 // Validates rows in this app's own export format (see CSV_COLUMNS) into
 // the shared record shape. Rows with problems are skipped and reported.
