@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { runMigrations } = require('./db');
 const app = require('./app');
+const { startScheduledSync } = require('./utils/holdingSync');
 
 const PORT = process.env.PORT || 4000;
 
@@ -10,6 +11,8 @@ const PORT = process.env.PORT || 4000;
 runMigrations()
   .then(() => {
     app.listen(PORT, () => console.log(`Finance API listening on http://localhost:${PORT}`));
+    // Daily SnapTrade holdings sync; does nothing unless SnapTrade is set up.
+    startScheduledSync();
   })
   .catch((err) => {
     console.error('[db] failed to run migrations, refusing to start:', err);
