@@ -1,9 +1,11 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { queryOne, withTransaction } = require('../db');
+const { queryOne, run, withTransaction } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth, signToken } = require('../middleware/auth');
-const { isNonEmptyString, isValidEmail, validateBody } = require('../middleware/validate');
+const { isNonEmptyString, isValidEmail, isValidPassword, validateBody } = require('../middleware/validate');
+const mailer = require('../utils/mailer');
 
 const router = express.Router();
 const SALT_ROUNDS = 12;
@@ -20,7 +22,7 @@ router.post(
   validateBody({
     name: (v) => isNonEmptyString(v, 100),
     email: isValidEmail,
-    password: (v) => typeof v === 'string' && v.length >= 8 && v.length <= 128,
+    password: isValidPassword,
   }),
   asyncHandler(async (req, res) => {
     const { name, email, password } = req.body;
@@ -55,7 +57,7 @@ router.post(
       return inserted;
     });
 
-    const token = signToken(user.id);
+    const token = signToken(user.id, 0);
     res.status(201).json({
       token,
       user: { id: user.id, name: name.trim(), email: normalizedEmail },
@@ -104,8 +106,123 @@ router.post(
       });
     }
 
-    const token = signToken(user.id);
+    const token = signToken(user.id, user.token_version);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+  })
+);
+
+// ---------- Sessions and passwords ----------
+
+// Lenient on purpose: a password set before the 72-byte cap (up to 128
+// characters) must still be accepted when the user confirms it.
+const isPasswordAttempt = (v) => typeof v === 'string' && v.length > 0 && v.length <= 128;
+
+// Changing the password signs out every other session (it bumps
+// token_version, see middleware/auth.js) - if the password was changed
+// because someone else knew it, their session must not survive. This
+// device gets a fresh token so the user isn't bounced to the login page.
+router.post(
+  '/password',
+  requireAuth,
+  validateBody({ currentPassword: isPasswordAttempt, newPassword: isValidPassword }),
+  asyncHandler(async (req, res) => {
+    const user = await queryOne('SELECT id, password_hash FROM users WHERE id = ?', [req.userId]);
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    if (!bcrypt.compareSync(req.body.currentPassword, user.password_hash)) {
+      // 403, not 401, for the same reason as DELETE /account below.
+      return res.status(403).json({ error: 'Current password is incorrect' });
+    }
+
+    const passwordHash = bcrypt.hashSync(req.body.newPassword, SALT_ROUNDS);
+    const updated = await withTransaction(async (tx) => {
+      // An outstanding reset link was asked for under the old password;
+      // it shouldn't be able to undo this change an hour later.
+      await tx.run('DELETE FROM password_resets WHERE user_id = ?', [user.id]);
+      return tx.queryOne(
+        'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ? RETURNING token_version',
+        [passwordHash, user.id]
+      );
+    });
+    res.json({ token: signToken(user.id, updated.token_version) });
+  })
+);
+
+// "Sign out everywhere": every token issued so far stops working,
+// including the one making this request.
+router.post('/logout-all', requireAuth, asyncHandler(async (req, res) => {
+  await run('UPDATE users SET token_version = token_version + 1 WHERE id = ?', [req.userId]);
+  res.status(204).end();
+}));
+
+const RESET_MESSAGE = 'If an account exists for that email, we sent a link to reset its password.';
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+async function issuePasswordReset(email) {
+  const user = await queryOne('SELECT id, email FROM users WHERE email = ?', [email]);
+  if (!user) return;
+
+  // 32 random bytes: unguessable, so a plain SHA-256 is enough to store
+  // it (bcrypt's slowness only matters for low-entropy human passwords),
+  // and it can be looked up by its hash directly.
+  const token = crypto.randomBytes(32).toString('base64url');
+  await withTransaction(async (tx) => {
+    // Only the newest link works; asking again cancels earlier ones.
+    await tx.run('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [user.id]);
+    await tx.run(
+      `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL '1 hour')`,
+      [user.id, hashResetToken(token)]
+    );
+  });
+  await mailer.sendPasswordReset(user.email, token);
+}
+
+// Answers BEFORE looking the email up, then does the work. Same rule as
+// login/register: the response must not reveal whether an account exists,
+// and that includes its timing - creating a token and sending an email
+// takes far longer than finding nothing, so awaiting it would tell.
+router.post(
+  '/forgot-password',
+  validateBody({ email: isValidEmail }),
+  (req, res) => {
+    res.status(202).json({ message: RESET_MESSAGE });
+    issuePasswordReset(req.body.email.trim().toLowerCase()).catch((err) => {
+      console.error('[auth] could not issue a password reset', err);
+    });
+  }
+);
+
+// Spends the token and sets the new password in one transaction. The
+// conditional UPDATE is what makes a link single use: two requests racing
+// with the same token can't both match "used_at IS NULL". Setting a new
+// password this way also signs out every existing session.
+router.post(
+  '/reset-password',
+  validateBody({ token: (v) => isNonEmptyString(v, 200), password: isValidPassword }),
+  asyncHandler(async (req, res) => {
+    const passwordHash = bcrypt.hashSync(req.body.password, SALT_ROUNDS);
+    const ok = await withTransaction(async (tx) => {
+      const reset = await tx.queryOne(
+        `UPDATE password_resets SET used_at = NOW()
+         WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()
+         RETURNING id, user_id`,
+        [hashResetToken(req.body.token)]
+      );
+      if (!reset) return false;
+      await tx.run(
+        'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
+        [passwordHash, reset.user_id]
+      );
+      await tx.run('DELETE FROM password_resets WHERE user_id = ? AND id <> ?', [reset.user_id, reset.id]);
+      return true;
+    });
+    if (!ok) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired. Ask for a new one.' });
+    }
+    res.status(204).end();
   })
 );
 
@@ -128,7 +245,7 @@ router.post(
 router.delete(
   '/account',
   requireAuth,
-  validateBody({ password: (v) => typeof v === 'string' && v.length > 0 }),
+  validateBody({ password: isPasswordAttempt }),
   asyncHandler(async (req, res) => {
     const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.userId]);
     if (!user) return res.status(404).json({ error: 'Account not found' });

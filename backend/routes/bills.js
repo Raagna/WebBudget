@@ -60,6 +60,11 @@ async function requireBillAccess(req, res, billId) {
 // own categories. Returns false (and has sent a 400) for anything else.
 async function checkCategory(req, res, categoryId) {
   if (categoryId === undefined || categoryId === null || categoryId === '') return true;
+  // A non-numeric id used to reach Postgres as-is and fail there with a 500.
+  if (!Number.isInteger(Number(categoryId)) || Number(categoryId) <= 0) {
+    res.status(400).json({ error: 'Invalid category' });
+    return false;
+  }
   const cat = await queryOne(
     'SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
     [categoryId, req.userId]

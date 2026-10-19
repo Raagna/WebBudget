@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { APP_NAME } from '../brand.js';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // Set by the reset-password page after a successful reset.
+  const notice = useLocation().state?.notice;
   const [email, setEmail] = useState('demo@example.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -31,6 +33,7 @@ export default function Login() {
         <div className="auth-brand"><span className="brand-mark" aria-hidden="true" />{APP_NAME}</div>
         <h1>Welcome back</h1>
         <p className="subtitle">Sign in to your ledger.</p>
+        {notice && !error && <div className="auth-notice">{notice}</div>}
         {error && <div className="auth-error">{error}</div>}
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="form-field">
@@ -38,8 +41,11 @@ export default function Login() {
             <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="form-field">
-            <label htmlFor="password">Password</label>
-            <input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="label-row">
+              <label htmlFor="password">Password</label>
+              <Link to="/forgot-password">Forgot password?</Link>
+            </div>
+            <input id="password" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}

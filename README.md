@@ -62,7 +62,8 @@ Layers are kept separate on purpose:
 ## Database schema
 
 ```
-users              id, name, email (unique), password_hash, created_at
+users              id, name, email (unique), password_hash, token_version, created_at
+password_resets    id, user_id, token_hash (SHA-256, never the token), expires_at, used_at
 profiles           id, user_id, name, currency, created_at
 profile_members    profile_id, user_id, role (owner/member), status (active/pending), invited_by
 categories         id, user_id (NULL = global default), name, type, icon, is_default
@@ -147,6 +148,10 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
 |---|---|---|
 | POST | `/api/auth/register` | Create account, returns JWT |
 | POST | `/api/auth/login` | Returns JWT |
+| POST | `/api/auth/password` | Change password — `{ currentPassword, newPassword }`; signs out every other session and returns a fresh JWT for this one |
+| POST | `/api/auth/logout-all` | Sign out everywhere — every token issued so far stops working, this one included |
+| POST | `/api/auth/forgot-password` | `{ email }` — always `202` with the same message; emails a one-hour, single-use reset link if the account exists |
+| POST | `/api/auth/reset-password` | `{ token, password }` — sets a new password and signs out every session |
 | DELETE | `/api/auth/account` | Permanently delete your own account — requires `{ password }` to confirm; blocked (`400`) if you own a shared profile with other active members |
 | GET | `/api/categories` | Default + user's custom categories, minus anything hidden |
 | POST | `/api/categories` | Create a custom category |
@@ -186,6 +191,20 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
   in plaintext.
 - **JWT** (7-day expiry) signed with a secret from `.env` — the server
   refuses to boot if `JWT_SECRET` is unset.
+- **Revocable sessions**: every token carries the user's `token_version`,
+  and `middleware/auth.js` checks it against the database on each request.
+  "Sign out everywhere", changing the password and resetting it all bump
+  the version, which kills every outstanding token at once. A deleted
+  account's tokens stop working immediately too.
+- **Password rules**: 8 characters to 72 *bytes* — bcrypt ignores anything
+  past byte 72, so longer passwords are rejected rather than silently
+  truncated.
+- **Password reset**: "Forgot password?" on the login page emails a link
+  with a random token that works once, for one hour. Only its SHA-256 is
+  stored. The request always gets the same answer, sent before the
+  account is even looked up, so neither the response nor its timing
+  reveals whether an email is registered. With no `SMTP_*` settings the
+  link is printed to the server console instead (see `backend/.env.example`).
 - **User-data isolation**: every query touching `transactions` or `bills`
   goes through an active `profile_members` row for `req.userId`, and
   `subscriptions` filters by `user_id = req.userId`, taken only from the
@@ -210,8 +229,11 @@ All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <tok
   hardcoded allow-list first.
 - **Rate limiting** on `/api/auth/*` (20 requests / 15 min) to slow down
   credential stuffing.
-- **Generic error messages** on login/registration so responses don't reveal
-  whether an email is registered.
+- **Generic error messages** on login/registration/password reset so
+  responses don't reveal whether an email is registered. For the same
+  reason a household's member list only shows people who have accepted:
+  a pending invite exists only when the email has an account, so listing
+  it would give that away.
 - **No sensitive data in responses**: `password_hash` is never selected into
   API responses; the global error handler returns a generic 500 instead of
   stack traces.
@@ -617,7 +639,9 @@ GitHub Pages (frontend).**
      manually touching the database.
    - Environment variables: `DATABASE_URL` (from step 2), `JWT_SECRET`
      (from step 3), `CORS_ORIGIN` (your GitHub Pages URL — add this after
-     step 6, once you know it).
+     step 6, once you know it), and `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/
+     `SMTP_FROM` so password reset links are emailed instead of written to
+     the server log (see `backend/.env.example`).
    - No persistent disk needed this time — the database lives in Neon/Supabase,
      not on this container.
    - Optional one-time step: open Render's shell for the service and run
