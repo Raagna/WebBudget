@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/budgets', label: 'Budgets' },
   { to: '/bills', label: 'Bills' },
+  { to: '/debts', label: 'Debts' },
   { to: '/reports', label: 'Reports' },
   { to: '/investments', label: 'Investments' },
   { to: '/profiles', label: 'Profiles' },
