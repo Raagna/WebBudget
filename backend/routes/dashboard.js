@@ -188,11 +188,11 @@ router.get('/trends', asyncHandler(async (req, res) => {
 
 // ---------- Layout ----------
 //
-// { widgets: ['safe', 'news', ...], layouts: { lg: [...], sm: [...] } }
+// { widgets: ['safe', 'news', ...], layouts: { xl: [...], lg: [...], sm: [...] } }
 // widgets lists what's shown; each layout places those widgets on a grid
 // of COLS[breakpoint] columns as { i, x, y, w, h } in grid units. Only the
 // shape is checked here - the frontend ignores ids it doesn't know.
-const COLS = { lg: 12, sm: 1 };
+const COLS = { xl: 18, lg: 12, sm: 1 };
 const WIDGET_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const MAX_WIDGETS = 24;
 

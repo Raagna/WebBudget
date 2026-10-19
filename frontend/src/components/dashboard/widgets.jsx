@@ -8,6 +8,8 @@ import { categoryColor } from '../../utils/categoryColors.js';
 import { changeVsLastMonth } from '../../utils/change.js';
 import InvestmentsCard from '../InvestmentsCard.jsx';
 import NewsCard from '../NewsCard.jsx';
+import RedditCard from '../RedditCard.jsx';
+import DebtsCard from '../DebtsCard.jsx';
 
 // Every dashboard widget. Each one fills the grid cell it's given (the
 // user picks the size), so cards stretch to 100% height and anything
@@ -249,5 +251,17 @@ export const WIDGETS = {
     title: 'Income and spending',
     size: { w: 12, h: 9 }, min: { w: 4, h: 7 },
     render: (ctx) => <TrendCard {...ctx} />,
+  },
+  reddit: {
+    title: 'Reddit',
+    size: { w: 5, h: 14 }, min: { w: 3, h: 8 },
+    render: () => <RedditCard />,
+  },
+  // Not on the default dashboard (most budgets are one person's); a
+  // household adds it from "Add a widget".
+  debts: {
+    title: 'Who owes what',
+    size: { w: 5, h: 10 }, min: { w: 3, h: 6 },
+    render: (ctx) => <DebtsCard profileId={ctx.profileId} currency={ctx.currency} />,
   },
 };
