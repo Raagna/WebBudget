@@ -21,6 +21,9 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState('');
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  // A touch screen as the main pointer: phones and tablets, not laptops.
+  const [isPhone] = useState(() => window.matchMedia?.('(pointer: coarse)').matches ?? false);
 
   useEffect(() => {
     if (initial) setForm(mapFromTransaction(initial));
@@ -118,14 +121,23 @@ export default function TransactionForm({ categories, initial, onSubmit, onCance
       {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
       {!initial && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-          {/* No `capture` attribute on purpose: it would force the camera
-              on phones, making emailed PDF bills impossible to pick. Without
-              it, phones offer both "Take photo" and "Choose file". */}
+          {/* Two pickers on phones. `capture` opens the rear camera with no
+              chooser in between (receipts are the common case), but it also
+              rules out files, so emailed PDF bills keep the plain picker.
+              Desktop browsers ignore `capture`, so they only get the one. */}
+          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+                 onChange={handleScan} style={{ display: 'none' }} />
           <input ref={fileInputRef} type="file" accept={SCAN_ACCEPT}
                  onChange={handleScan} style={{ display: 'none' }} />
+          {isPhone && (
+            <button type="button" className="btn btn-secondary btn-sm" disabled={scanning || saving}
+                    onClick={() => cameraInputRef.current?.click()}>
+              {scanning ? 'Reading…' : 'Photograph receipt'}
+            </button>
+          )}
           <button type="button" className="btn btn-secondary btn-sm" disabled={scanning || saving}
                   onClick={() => fileInputRef.current?.click()}>
-            {scanning ? 'Reading…' : 'Scan receipt or bill'}
+            {isPhone ? 'Choose file' : scanning ? 'Reading…' : 'Scan receipt or bill'}
           </button>
           {scanNote && <span style={{ color: 'var(--pine)', fontSize: 13 }}>{scanNote}</span>}
         </div>
