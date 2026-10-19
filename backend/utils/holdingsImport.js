@@ -197,6 +197,10 @@ function disambiguateLabels(accounts) {
 // source, inside the caller's transaction. Each account's previous rows are
 // replaced, from this source and - for a Wealthsimple account - from the
 // other Wealthsimple source too, so CSV and SnapTrade never double count.
+// The last-four match is only used against the OTHER source: within one
+// source the external account id is exact, and two accounts in one file can
+// share their last four characters (e.g. ...7CAD), which must not wipe each
+// other out.
 // Accounts not in `accounts` are left alone. bookCosts must already be in
 // the profile's currency (bookCostCents). Returns { inserted, removed }.
 async function replaceAccounts(tx, { profileId, source, accounts, userId }) {
@@ -206,8 +210,9 @@ async function replaceAccounts(tx, { profileId, source, accounts, userId }) {
     const del = await tx.run(
       `DELETE FROM holdings
         WHERE profile_id = ? AND source <> 'manual'
-          AND ((source = ? AND external_account = ?) OR (?::text IS NOT NULL AND ws_account_last4 = ?))`,
-      [profileId, source, a.externalAccount, a.wsLast4 || null, a.wsLast4 || null]
+          AND ((source = ? AND external_account = ?)
+               OR (source <> ? AND ?::text IS NOT NULL AND ws_account_last4 = ?))`,
+      [profileId, source, a.externalAccount, source, a.wsLast4 || null, a.wsLast4 || null]
     );
     removed += del.rowCount;
     for (const p of a.positions) {

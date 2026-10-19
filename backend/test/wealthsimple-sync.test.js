@@ -177,6 +177,21 @@ test('importing again replaces those accounts only, and never touches hand-enter
   ]);
 });
 
+test('two accounts whose numbers end in the same four characters both import', async () => {
+  const u = await cadUser('SameLast4');
+  const csv = [
+    HEADER,
+    row('TFSA', 'TFSA', 'HQ1234567CAD', 'XEQT', 'TSX', 'XTSE', 'iShares Core Equity ETF', 'EXCHANGE_TRADED_FUND', '5', '200'),
+    row('RRSP', 'RRSP', 'HQ7654327CAD', 'VFV', 'TSX', 'XTSE', 'Vanguard S&P 500', 'EXCHANGE_TRADED_FUND', '2', '300'),
+  ].join('\n');
+  const res = await importCsv(u, csv);
+  assert.equal(res.status, 200, res.text);
+  assert.equal(res.body.imported, 2);
+  assert.equal(res.body.removed, 0);
+  const got = (await portfolio(u)).body.holdings.map((h) => `${h.symbol}:${h.account}`).sort();
+  assert.deepEqual(got, ['VFV.TO:Wealthsimple RRSP', 'XEQT.TO:Wealthsimple TFSA']);
+});
+
 test('the wrong file is refused with a hint, and imported holdings are edited at Wealthsimple', async () => {
   const u = await cadUser('WrongFile');
   const activities = 'transaction_date,settlement_date,account_id,account_type,activity_type,activity_sub_type,direction,symbol,name,currency,quantity,unit_price,commission,net_cash_amount\n2026-10-01,2026-10-02,HQ1,TFSA,Trade,BUY,LONG,XEQT,iShares,CAD,1,40,0,-40';
