@@ -1,0 +1,41 @@
+/* Install prompt and offline notice (components/PwaNotices.jsx). Both sit
+   at the bottom of the screen, above the page but under the phone menu's
+   backdrop (z-index 40), clear of the iPhone home indicator. */
+
+.pwa-install,
+.pwa-offline {
+  position: fixed; z-index: 30;
+  left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  margin: 0 auto; max-width: 440px;
+  border-radius: var(--radius); box-shadow: var(--shadow-pop);
+  font-size: 14px; line-height: 1.4;
+}
+
+/* A white card like the sign-in card, so it stands out on the rail-green
+   sign-in screen as well as on the light ground of the app pages. */
+.pwa-install {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+}
+.pwa-install-mark {
+  width: 26px; height: 18px; border-radius: 4px; background: var(--accent); position: relative; flex-shrink: 0;
+}
+.pwa-install-mark::after {
+  content: ''; position: absolute; right: 3px; top: 3px; width: 8px; height: 12px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.pwa-install-text { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; }
+.pwa-install-text strong { font-weight: 800; }
+.pwa-install-text span { color: var(--ink-soft); }
+.pwa-install-text b { color: var(--ink); font-weight: 700; }
+.pwa-share-icon { width: 15px; height: 15px; vertical-align: -2px; color: var(--accent); }
+
+.pwa-install-actions { display: flex; gap: 6px; margin-left: auto; }
+
+/* Neutral, not warning ochre: that colour means a budget is nearly spent. */
+.pwa-offline { padding: 10px 14px; background: var(--surface); color: var(--ink); font-weight: 600; border: 1px solid var(--line-strong); }
+
+@media (min-width: 900px) {
+  /* Desktop: tuck it into the corner instead of centring over content. */
+  .pwa-install, .pwa-offline { left: auto; right: 24px; bottom: 24px; }
+}
