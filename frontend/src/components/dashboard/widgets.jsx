@@ -10,6 +10,7 @@ import InvestmentsCard from '../InvestmentsCard.jsx';
 import NewsCard from '../NewsCard.jsx';
 import RedditCard from '../RedditCard.jsx';
 import DebtsCard from '../DebtsCard.jsx';
+import PayoffCard from '../PayoffCard.jsx';
 
 // Every dashboard widget. Each one fills the grid cell it's given (the
 // user picks the size), so cards stretch to 100% height and anything
@@ -263,5 +264,11 @@ export const WIDGETS = {
     title: 'Who owes what',
     size: { w: 5, h: 10 }, min: { w: 3, h: 6 },
     render: (ctx) => <DebtsCard profileId={ctx.profileId} currency={ctx.currency} />,
+  },
+  // Also not on the default dashboard: only useful once debts are entered.
+  payoff: {
+    title: 'Payoff plan',
+    size: { w: 5, h: 10 }, min: { w: 3, h: 6 },
+    render: (ctx) => <PayoffCard profileId={ctx.profileId} currency={ctx.currency} />,
   },
 };
