@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { APP_NAME } from '../brand.js';
+import { passwordProblem, MIN_PASSWORD_LENGTH } from '../utils/password.js';
 
 export default function Register() {
   const { register } = useAuth();
@@ -15,8 +16,9 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    const problem = passwordProblem(password);
+    if (problem) {
+      setError(problem);
       return;
     }
     setLoading(true);
@@ -48,7 +50,7 @@ export default function Register() {
           </div>
           <div className="form-field">
             <label htmlFor="password">Password</label>
-            <input id="password" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input id="password" type="password" required minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
             {loading ? 'Creating account…' : 'Create account'}
