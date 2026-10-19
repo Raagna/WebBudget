@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { APP_NAME } from './src/brand.js';
+import { lanHttps } from './lan-https.js';
 
 // GitHub Pages serves a project site from a subpath
 // (username.github.io/repo-name/), not the domain root, so every asset
@@ -12,6 +13,9 @@ import { APP_NAME } from './src/brand.js';
 export default defineConfig({
   plugins: [
     react(),
+    // HTTPS with a phone-trustable certificate, only for `--mode lan`
+    // (npm run preview:lan). See lan-https.js and README "Phone testing".
+    lanHttps(),
     // Installable app: manifest + a Workbox service worker. The plugin
     // takes scope and start_url from `base`, so it follows BASE_PATH too.
     VitePWA({
@@ -50,7 +54,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,woff2}'],
         globIgnores: ['**/pdf-*.js', '**/pdf.worker*'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/api\//],
+        navigateFallbackDenylist: [/\/api\//, /\/lan-ca\.crt$/],
         cleanupOutdatedCaches: true,
         // Money data is never cached: every /api request (same-origin in
         // dev, VITE_API_URL's host in production) goes to the network,
@@ -70,7 +74,8 @@ export default defineConfig({
     // In development the app calls the API at /api on its own origin and
     // Vite forwards it to the backend. A phone on the same Wi-Fi then only
     // needs http://<this-PC>:5173 (run `npm run dev:lan`) - no second port
-    // to reach and no CORS setup. Production builds use VITE_API_URL.
+    // to reach and no CORS setup. Production builds use VITE_API_URL
+    // (`/api` in the lan build, which `vite preview` proxies the same way).
     proxy: {
       '/api': process.env.API_PROXY_TARGET || 'http://localhost:4000',
     },

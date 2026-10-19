@@ -3,6 +3,8 @@ dist/
 .env
 .env.*
 !.env.example
+!frontend/.env.lan
+frontend/.lan-https/
 *.log
 .claude/worktrees/
 .impeccable/review/

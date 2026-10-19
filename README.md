@@ -455,6 +455,78 @@ either install Postgres locally and `createdb finance_dev`, or skip local
 Postgres entirely and point `DATABASE_URL` straight at a free Neon or
 Supabase database (see Deployment) even for local development.
 
+## Phone testing
+
+With the backend running, from `frontend/` on the PC (the phone must be on
+the same Wi-Fi):
+
+| Command | Open on the phone | What you get |
+| --- | --- | --- |
+| `npm run dev:lan` | `http://<PC-IP>:5173` | Hot reload, for quick layout checks. Plain HTTP, so no service worker: no offline shell and no real install. |
+| `npm run preview:lan` | `https://<PC-IP>:4173` | The production build (with the service worker) over HTTPS, so the installed app can be tested on a real device. Rebuilds each time you run it. |
+
+Both forward `/api` to the backend on port 4000, so the phone needs only one
+address. The terminal prints the `Network:` URLs to use (ignore
+`192.168.56.x` and other virtual adapters). If Windows Firewall asks, allow
+Node.js on private networks.
+
+**Why the phone has to trust a certificate.** Clicking through the "not
+private" warning isn't enough. Chrome won't register a service worker, or
+offer to install, on a page with a certificate error. So the first
+`preview:lan` creates a small local certificate authority in
+`frontend/.lan-https/` (gitignored), and the phone installs it once. It
+lasts 10 years. The server certificate it signs is reissued automatically
+whenever the PC's IP changes, so you don't need to reinstall anything. Keep
+`ca.key` on the PC: a phone that trusts this CA will trust any certificate
+made with that key.
+
+**Android (Chrome)**
+
+1. Open `https://<PC-IP>:4173/lan-ca.crt`. At "Your connection is not
+   private", tap **Advanced → Proceed to <PC-IP> (unsafe)**. The file
+   `webbudget-lan-ca.crt` downloads.
+2. Go to **Settings → Security & privacy → More security settings →
+   Encryption & credentials → Install a certificate → CA certificate**,
+   tap **Install anyway**, then pick the file. Menu names vary by phone
+   maker; searching Settings for "CA certificate" finds it. Android needs a
+   screen lock for this, and afterwards it shows a "network may be
+   monitored" notice.
+3. Close the tab and open `https://<PC-IP>:4173` again. There's no warning
+   this time. Sign in, then use the app's install prompt or **⋮ → Install
+   app**.
+4. To check: turn on airplane mode and launch the app from the home screen.
+   The shell should load, and money data should fail to load (by design,
+   it's never cached).
+
+(Android only, without a certificate: in `chrome://flags`, add
+`http://<PC-IP>:5173` to **Insecure origins treated as secure**. Chrome then
+runs the service worker over `dev:lan`.)
+
+**iPhone / iPad (Safari)**
+
+1. Open `https://<PC-IP>:4173/lan-ca.crt` in Safari. At "This Connection Is
+   Not Private", tap **Show Details → visit this website → Visit Website**,
+   then **Allow** the configuration-profile download.
+2. Go to **Settings → Profile Downloaded** (or **General → VPN & Device
+   Management**) and tap **Install**.
+3. Go to **Settings → General → About → Certificate Trust Settings** and turn
+   on full trust for "WebBudget LAN dev CA". This step is easy to miss, and
+   without it Safari keeps warning.
+4. Reload `https://<PC-IP>:4173` (there should be no warning), then **Share →
+   Add to Home Screen**. The home-screen app keeps its own storage, separate
+   from Safari's, so sign in again inside it.
+
+Caveat: iOS only keeps a service worker for an origin it fully trusts. If
+you just tapped through the warning, without steps 2–3, expect no offline
+shell and a home-screen icon that only opens in Safari. With the CA trusted
+it should behave like any HTTPS site. That is untested on a real iPhone so
+far.
+
+To undo, remove the certificate from the phone: on Android, **Encryption &
+credentials → User credentials**; on iOS, delete the profile under **VPN &
+Device Management**. Delete `frontend/.lan-https/` to start over with a new
+CA.
+
 ## Migrations & upgrading
 
 Schema changes live as individual, numbered SQL files in
