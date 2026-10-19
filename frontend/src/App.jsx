@@ -11,6 +11,7 @@ import Budgets from './pages/Budgets.jsx';
 import Reports from './pages/Reports.jsx';
 import Investments from './pages/Investments.jsx';
 import Debts from './pages/Debts.jsx';
+import Payoff from './pages/Payoff.jsx';
 import Profiles from './pages/Profiles.jsx';
 import Settings from './pages/Settings.jsx';
 
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/investments" element={<Investments />} />
             <Route path="/debts" element={<Debts />} />
+            <Route path="/payoff" element={<Payoff />} />
             <Route path="/profiles" element={<Profiles />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
