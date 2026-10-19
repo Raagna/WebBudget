@@ -547,6 +547,38 @@ table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background:
 .news-list a:hover, .news-list a:focus-visible { color: var(--accent-strong); text-decoration: underline; }
 .news-meta { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-soft); }
 
+/* Transactions: the search box above the filters, and paging below. */
+.tx-search { margin-bottom: 12px; max-width: 560px; }
+.tx-search input {
+  width: 100%; padding: 10px 14px; min-height: 42px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background-color: var(--surface);
+}
+.tx-search input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.load-more { display: flex; align-items: center; justify-content: center; gap: 14px; padding-top: 16px; font-size: 14px; color: var(--ink-soft); }
+
+/* Savings goals: one card per goal, its colour from its name like a
+   category's, so a goal is the same colour on the page and dashboard. */
+.goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; margin-bottom: 20px; }
+.goal-grid > .card { margin: 0; }
+.goal { border-top: 4px solid var(--cat); }
+.goal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.goal-head h2 { font-size: 18px; font-weight: 800; margin: 0; }
+.goal-date { font-size: 13px; color: var(--ink-soft); }
+.goal-figures { margin-top: 10px; font-size: 14px; color: var(--ink-soft); display: flex; align-items: baseline; gap: 6px; }
+.goal-figures b { font-size: 24px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.goal-pct { margin-left: auto; font-weight: 700; color: var(--ink); }
+.goal-of { white-space: nowrap; }
+.goal-status { margin: 0; font-size: 14px; }
+.goal.reached .goal-status { color: var(--positive); font-weight: 700; }
+.goal .budget-actions input { width: 130px; }
+.goal-edit { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.goal-history { margin-top: 12px; }
+
+/* Net worth: an account and its balance on one line. */
+.acct-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.acct-balance { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.budget-list .budget-actions input { width: 140px; }
+
 /* Who owes what: two cards a row on wide screens, one on narrow ones. */
 .debts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-bottom: 18px; }
 .debts-grid > .card { margin: 0; }
