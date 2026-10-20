@@ -255,6 +255,16 @@ input, select, textarea { font-family: var(--font-body); font-size: 14px; color:
 .edit-bar strong { color: var(--ink); }
 .edit-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .edit-hint-phone { display: none; }
+/* Layout presets: the quick switcher in the header, and the row of
+   preset tools while customizing. */
+.preset-picker {
+  min-height: 42px; padding: 8px 34px 8px 12px; border: 1px solid var(--line-strong); border-radius: 999px;
+  background-color: var(--surface); font-weight: 700; color: var(--ink);
+}
+.edit-bar .preset-row { flex: 1 1 100%; padding-top: 10px; border-top: 1px solid var(--line); }
+.preset-label { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.preset-row .inline-field input { min-width: 160px; }
+.preset-chips { flex: 1 1 100%; }
 @media (max-width: 899px) { .edit-hint-wide { display: none; } .edit-hint-phone { display: inline; } }
 
 .widget-bar {
