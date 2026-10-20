@@ -2,7 +2,9 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { start, client, newUser } = require('./helpers');
-const { monthsLeft } = require('../routes/goals');
+// From utils, not routes/goals: requiring a route file here would open the
+// database pool before start() points it at this test's own schema.
+const { monthsLeft } = require('../utils/period');
 
 let env;
 let api;

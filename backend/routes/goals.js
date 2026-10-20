@@ -3,7 +3,7 @@ const { query, queryOne, run } = require('../db');
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { isValidDate, isPositiveAmount, toCents, fromCents } = require('../middleware/validate');
-const { userToday } = require('../utils/period');
+const { userToday, monthsLeft } = require('../utils/period');
 
 // Savings goals: a target, an optional date, and the money put toward it.
 // Same membership rule as budgets: any active member of the profile can
@@ -41,15 +41,6 @@ async function requireGoal(req, res, idRaw) {
     return null;
   }
   return row;
-}
-
-// Calendar months from today's month through the target's, counting both:
-// on Oct 19 a Dec 31 target has 3 (October, November, December), since a
-// monthly transfer can still go in this month.
-function monthsLeft(today, targetDate) {
-  const [y, m] = today.split('-').map(Number);
-  const [ty, tm] = targetDate.split('-').map(Number);
-  return (ty - y) * 12 + (tm - m) + 1;
 }
 
 // Where a goal stands, in plain terms the page can show as-is.
@@ -214,4 +205,3 @@ router.delete('/:id/contributions/:contributionId', asyncHandler(async (req, res
 }));
 
 module.exports = router;
-module.exports.monthsLeft = monthsLeft;
