@@ -38,11 +38,13 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 // route's own larger parser ever ran.
 app.use('/api/scan', scanRoutes);
 
-// The CSV import route parses its own body with a 5mb limit; the global
-// 100kb parser must skip it or it rejects larger files before that runs.
+// The CSV import routes parse their own bodies with bigger limits; the
+// global 100kb parser must skip them or it rejects larger files before
+// those run.
 const jsonParser = express.json({ limit: '100kb' });
+const OWN_BODY_PARSER = new Set(['/api/transactions/import', '/api/investments/import']);
 app.use((req, res, next) =>
-  req.path === '/api/transactions/import' ? next() : jsonParser(req, res, next)
+  OWN_BODY_PARSER.has(req.path) ? next() : jsonParser(req, res, next)
 );
 
 // Basic brute-force protection on auth endpoints.
