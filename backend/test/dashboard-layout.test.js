@@ -59,3 +59,47 @@ test('malformed layouts are rejected', async () => {
   }
   assert.equal((await getLayout(u)).body.layout, null);
 });
+
+const presets = (u) => api('GET', '/dashboard/layout/presets', { token: u.token });
+const addPreset = (u, name, layout = LAYOUT) => api('POST', '/dashboard/layout/presets', { token: u.token, body: { name, layout } });
+
+test('layout presets are saved per user and follow them into every household', async () => {
+  const u = await newUser(api, 'Presets');
+  const other = await newUser(api, 'NotMine');
+  const saved = await addPreset(u, 'Investing');
+  assert.equal(saved.status, 201, saved.text);
+  assert.equal(saved.body.preset.name, 'Investing');
+  assert.deepEqual(saved.body.preset.layout.layouts.lg[1], { i: 'news', x: 0, y: 0, w: 5, h: 14 }); // grid extras dropped
+
+  // A household the user joins later still sees the same presets: they
+  // belong to the account, not to a budget.
+  const p = await api('POST', '/profiles', { token: u.token, body: { name: 'Shared flat' } });
+  assert.ok(p.status < 300, p.text);
+  assert.deepEqual((await presets(u)).body.presets.map((x) => x.name), ['Investing']);
+  assert.deepEqual((await presets(other)).body.presets, []);
+
+  // Names are unique per user, ignoring case; someone else can reuse one.
+  assert.equal((await addPreset(u, 'investing')).status, 409);
+  assert.equal((await addPreset(other, 'Investing')).status, 201);
+  assert.equal((await addPreset(u, '   ')).status, 400);
+  assert.equal((await addPreset(u, 'Bad', { widgets: ['safe', 'safe'], layouts: {} })).status, 400);
+});
+
+test('a preset can be renamed, overwritten and deleted, only by its owner', async () => {
+  const u = await newUser(api, 'PresetEdit');
+  const other = await newUser(api, 'PresetThief');
+  const { body } = await addPreset(u, 'Everyday');
+  const id = body.preset.id;
+  const put = (who, update) => api('PUT', `/dashboard/layout/presets/${id}`, { token: who.token, body: update });
+
+  assert.equal((await put(other, { name: 'Mine now' })).status, 404);
+  assert.equal((await put(u, { name: 'Daily' })).body.preset.name, 'Daily');
+  const moved = { widgets: ['safe'], layouts: { lg: [{ i: 'safe', x: 5, y: 0, w: 7, h: 14 }] } };
+  assert.deepEqual((await put(u, { layout: moved })).body.preset.layout.layouts.lg, moved.layouts.lg);
+  await addPreset(u, 'Weekend');
+  assert.equal((await put(u, { name: 'weekend' })).status, 409);
+
+  assert.equal((await api('DELETE', `/dashboard/layout/presets/${id}`, { token: other.token })).status, 404);
+  assert.equal((await api('DELETE', `/dashboard/layout/presets/${id}`, { token: u.token })).status, 204);
+  assert.deepEqual((await presets(u)).body.presets.map((x) => x.name), ['Weekend']);
+});

@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#173a2f"/><rect x="3" y="7" width="26" height="18" rx="4" fill="#a6e3c3"/><rect x="18" y="10" width="8" height="12" rx="2" fill="#74a88f"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Ledger book on the Rail Green tile (see DESIGN.md colours) -->
+  <rect width="64" height="64" rx="14" fill="#173a2f"/>
+  <!-- page block, visible on the fore-edge and bottom -->
+  <path d="M20 13h28a3 3 0 0 1 3 3v33a3 3 0 0 1-3 3H20z" fill="#eaf3ee"/>
+  <path d="M48 16v33M20 49h28" stroke="#a6e3c3" stroke-width="1.5"/>
+  <!-- cover -->
+  <rect x="14" y="11" width="31" height="38" rx="3" fill="#1f6e46"/>
+  <!-- spine band -->
+  <rect x="14" y="11" width="7" height="38" rx="3" fill="#175636"/>
+  <rect x="20" y="11" width="1.5" height="38" fill="#a6e3c3" opacity=".55"/>
+  <!-- label with ledger rules -->
+  <rect x="25" y="19" width="15" height="14" rx="1.5" fill="#eaf3ee"/>
+  <path d="M27.5 23.5h10M27.5 26.5h10M27.5 29.5h6" stroke="#173a2f" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

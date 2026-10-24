@@ -243,4 +243,76 @@ router.put('/layout', asyncHandler(async (req, res) => {
   res.json({ layout });
 }));
 
+// ---------- Layout presets ----------
+//
+// Named layouts a user can switch between. Per user, so they follow the
+// user into every household. Same layout shape as above.
+const MAX_PRESETS = 20;
+const presetName = (v) => (typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 40 ? v.trim() : null);
+const presetOut = (r) => ({ id: r.id, name: r.name, layout: r.layout });
+
+// GET /api/dashboard/layout/presets -> { presets: [{ id, name, layout }] }
+router.get('/layout/presets', asyncHandler(async (req, res) => {
+  const rows = await query(`SELECT id, name, layout FROM dashboard_presets WHERE user_id = ? ORDER BY lower(name), id`, [req.userId]);
+  res.json({ presets: rows.map(presetOut) });
+}));
+
+// POST /api/dashboard/layout/presets  { name, layout }
+router.post('/layout/presets', asyncHandler(async (req, res) => {
+  const name = presetName(req.body.name);
+  if (!name) return res.status(400).json({ error: 'Name the preset (up to 40 characters).' });
+  const layout = cleanLayout(req.body.layout);
+  if (!layout) return res.status(400).json({ error: 'Invalid dashboard layout' });
+  const existing = await query(`SELECT name FROM dashboard_presets WHERE user_id = ?`, [req.userId]);
+  if (existing.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+    return res.status(409).json({ error: `You already have a preset called "${name}".` });
+  }
+  if (existing.length >= MAX_PRESETS) return res.status(400).json({ error: `You can keep up to ${MAX_PRESETS} presets.` });
+  const row = await queryOne(
+    `INSERT INTO dashboard_presets (user_id, name, layout) VALUES (?, ?, ?) RETURNING id, name, layout`,
+    [req.userId, name, JSON.stringify(layout)]
+  );
+  res.status(201).json({ preset: presetOut(row) });
+}));
+
+// PUT /api/dashboard/layout/presets/:id  { name?, layout? }
+// Renames it, or overwrites it with the layout being edited.
+router.put('/layout/presets/:id', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id) || 0;
+  const current = await queryOne(`SELECT id FROM dashboard_presets WHERE id = ? AND user_id = ?`, [id, req.userId]);
+  if (!current) return res.status(404).json({ error: 'Preset not found' });
+  const fields = [];
+  const params = [];
+  if (req.body.name !== undefined) {
+    const name = presetName(req.body.name);
+    if (!name) return res.status(400).json({ error: 'Name the preset (up to 40 characters).' });
+    const clash = await queryOne(
+      `SELECT 1 FROM dashboard_presets WHERE user_id = ? AND lower(name) = lower(?) AND id <> ?`,
+      [req.userId, name, id]
+    );
+    if (clash) return res.status(409).json({ error: `You already have a preset called "${name}".` });
+    fields.push('name = ?');
+    params.push(name);
+  }
+  if (req.body.layout !== undefined) {
+    const layout = cleanLayout(req.body.layout);
+    if (!layout) return res.status(400).json({ error: 'Invalid dashboard layout' });
+    fields.push('layout = ?');
+    params.push(JSON.stringify(layout));
+  }
+  if (fields.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+  const row = await queryOne(
+    `UPDATE dashboard_presets SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, name, layout`,
+    [...params, id]
+  );
+  res.json({ preset: presetOut(row) });
+}));
+
+// DELETE /api/dashboard/layout/presets/:id
+router.delete('/layout/presets/:id', asyncHandler(async (req, res) => {
+  const result = await run(`DELETE FROM dashboard_presets WHERE id = ? AND user_id = ?`, [Number(req.params.id) || 0, req.userId]);
+  if (result.rowCount === 0) return res.status(404).json({ error: 'Preset not found' });
+  res.status(204).end();
+}));
+
 module.exports = router;
