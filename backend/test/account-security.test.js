@@ -118,7 +118,7 @@ test('a token stops working once its account is deleted', async () => {
   const u = await newUser(api, 'Gone');
   const del = await api('DELETE', '/auth/account', { token: u.token, body: { password: u.password } });
   assert.equal(del.status, 204, del.text);
-  // Before migration 017 the middleware never looked the user up, so this
+  // Before migration 019 the middleware never looked the user up, so this
   // token still passed it for the rest of its 7 days.
   assert.equal((await whoCanSee(u.token)).status, 401);
 });

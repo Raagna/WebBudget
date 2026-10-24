@@ -1,4 +1,4 @@
--- Migration 017: revocable sessions and password resets.
+-- Migration 019: revocable sessions and password resets.
 --
 -- users.token_version is copied into every JWT the API signs, and
 -- middleware/auth.js rejects a token whose version no longer matches.

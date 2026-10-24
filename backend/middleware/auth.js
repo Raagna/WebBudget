@@ -16,7 +16,7 @@ if (!JWT_SECRET) {
  * tampering with parameters.
  *
  * A valid signature isn't enough on its own: the token's version must
- * still match users.token_version (migration 017), which "sign out
+ * still match users.token_version (migration 019), which "sign out
  * everywhere" and password changes bump. That lookup also rejects tokens
  * for an account that has since been deleted - before it, they kept
  * passing here for the rest of their 7 days.
@@ -38,7 +38,7 @@ async function requireAuth(req, res, next) {
 
   try {
     const user = await queryOne('SELECT token_version FROM users WHERE id = ?', [payload.sub]);
-    // Tokens signed before migration 017 have no tv; they count as version
+    // Tokens signed before migration 019 have no tv; they count as version
     // 0 so the deploy itself doesn't sign everyone out.
     if (!user || user.token_version !== (payload.tv ?? 0)) {
       return res.status(401).json({ error: 'Invalid or expired token' });
