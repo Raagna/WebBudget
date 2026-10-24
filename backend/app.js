@@ -16,6 +16,8 @@ const newsRoutes = require('./routes/news');
 const redditRoutes = require('./routes/reddit');
 const debtRoutes = require('./routes/debts');
 const payoffRoutes = require('./routes/payoff');
+const goalRoutes = require('./routes/goals');
+const netWorthRoutes = require('./routes/networth');
 
 const app = express();
 
@@ -66,6 +68,8 @@ app.use('/api/news', newsRoutes);
 app.use('/api/reddit', redditRoutes);
 app.use('/api/debts', debtRoutes);
 app.use('/api/payoff', payoffRoutes);
+app.use('/api/goals', goalRoutes);
+app.use('/api/networth', netWorthRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
