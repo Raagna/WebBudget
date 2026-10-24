@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { categoryColor } from '../utils/categoryColors.js';
 import { formatMoney, formatDate, localToday } from '../utils/format.js';
 
+const PAGE_SIZE = 100;
+
 export default function Transactions() {
   const { activeProfileId, activeProfile } = useProfiles();
   const { user } = useAuth();
@@ -47,21 +49,52 @@ export default function Transactions() {
   const [showFilters, setShowFilters] = useState(false);
   const activeFilterCount = ['type', 'categoryId', 'addedBy', 'from', 'to'].filter((k) => filters[k]).length;
 
-  const load = useCallback(async () => {
-    if (!activeProfileId) return;
-    setLoading(true);
-    const params = { profileId: activeProfileId, sort: filters.sort, dir: filters.dir, limit: 100 };
+  // Search box: what's typed, and what's been sent (a beat after typing
+  // stops, so each keystroke isn't a request).
+  const [searchText, setSearchText] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchText.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchText]);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // The current search and filters as query parameters - shared by the
+  // list, "Load more" and export, so all three always agree.
+  const filterParams = useCallback(() => {
+    const params = { profileId: activeProfileId };
+    if (search) params.q = search;
     if (filters.type) params.type = filters.type;
     if (filters.categoryId) params.categoryId = filters.categoryId;
     if (filters.addedBy) params.addedBy = filters.addedBy;
     if (filters.from) params.from = filters.from;
     if (filters.to) params.to = filters.to;
+    return params;
+  }, [activeProfileId, search, filters]);
+
+  const load = useCallback(async () => {
+    if (!activeProfileId) return;
+    setLoading(true);
+    const params = { ...filterParams(), sort: filters.sort, dir: filters.dir, limit: PAGE_SIZE };
     const { data } = await client.get('/transactions', { params });
     setTransactions(data.transactions);
     setTotal(data.total);
     setSelected(new Set());
     setLoading(false);
-  }, [activeProfileId, filters]);
+  }, [activeProfileId, filters, filterParams]);
+
+  // The next page, added below what's already showing.
+  async function loadMore() {
+    setLoadingMore(true);
+    try {
+      const params = { ...filterParams(), sort: filters.sort, dir: filters.dir, limit: PAGE_SIZE, offset: transactions.length };
+      const { data } = await client.get('/transactions', { params });
+      setTransactions((rows) => [...rows, ...data.transactions]);
+      setTotal(data.total);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     client.get('/categories').then((res) => setCategories(res.data.categories));
@@ -88,13 +121,7 @@ export default function Transactions() {
   async function handleExport() {
     setExportBusy(true);
     try {
-      const params = { profileId: activeProfileId };
-      if (filters.type) params.type = filters.type;
-      if (filters.categoryId) params.categoryId = filters.categoryId;
-    if (filters.addedBy) params.addedBy = filters.addedBy;
-      if (filters.from) params.from = filters.from;
-      if (filters.to) params.to = filters.to;
-      const res = await client.get('/transactions/export', { params, responseType: 'blob' });
+      const res = await client.get('/transactions/export', { params: filterParams(), responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
       const a = document.createElement('a');
       a.href = url;
@@ -289,6 +316,14 @@ export default function Transactions() {
         <TransactionForm categories={categories} initial={editing} onSubmit={handleEdit} onCancel={() => setEditing(null)} />
       )}
 
+      {/* Always visible, on phones too: finding one transaction is the
+          most common reason to open this page. */}
+      <div className="tx-search">
+        <label htmlFor="tx-search" className="visually-hidden">Search transactions</label>
+        <input id="tx-search" type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)}
+               placeholder="Search descriptions, categories or an amount" autoComplete="off" />
+      </div>
+
       {/* On phones the filters fold away behind this button so the list
           itself is on screen; on desktop the button is hidden and the
           filters always show. */}
@@ -432,6 +467,14 @@ export default function Transactions() {
               ))}
             </tbody>
           </table>
+        )}
+        {transactions.length < total && (
+          <div className="load-more">
+            <span>Showing {transactions.length} of {total}</span>
+            <button type="button" className="btn btn-secondary" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : `Load ${Math.min(PAGE_SIZE, total - transactions.length)} more`}
+            </button>
+          </div>
         )}
       </div>
     </div>
