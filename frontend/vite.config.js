@@ -18,7 +18,7 @@ export default defineConfig({
       // A new version activates on the next launch. No forced reload, so
       // a half-typed transaction is never wiped by an update.
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon-180x180.png'],
+      includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         id: './',
         name: APP_NAME,

@@ -47,4 +47,13 @@ function sameStretchLastMonth(today) {
   return { start, end };
 }
 
-module.exports = { userToday, monthBounds, monthPeriod, daysLeftInMonth, sameStretchLastMonth };
+// Calendar months from today's month through a target date's, counting
+// both: on Oct 19 a Dec 31 target has 3 (October, November, December),
+// since a monthly transfer can still go in this month.
+function monthsLeft(today, targetDate) {
+  const [y, m] = today.split('-').map(Number);
+  const [ty, tm] = targetDate.split('-').map(Number);
+  return (ty - y) * 12 + (tm - m) + 1;
+}
+
+module.exports = { userToday, monthBounds, monthPeriod, daysLeftInMonth, sameStretchLastMonth, monthsLeft };
