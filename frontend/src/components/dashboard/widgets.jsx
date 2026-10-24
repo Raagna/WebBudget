@@ -10,6 +10,7 @@ import InvestmentsCard from '../InvestmentsCard.jsx';
 import NewsCard from '../NewsCard.jsx';
 import RedditCard from '../RedditCard.jsx';
 import DebtsCard from '../DebtsCard.jsx';
+import { NetWorthCard, GoalsCard } from '../NetWorthCard.jsx';
 
 // Every dashboard widget. Each one fills the grid cell it's given (the
 // user picks the size), so cards stretch to 100% height and anything
@@ -263,5 +264,15 @@ export const WIDGETS = {
     title: 'Who owes what',
     size: { w: 5, h: 10 }, min: { w: 3, h: 6 },
     render: (ctx) => <DebtsCard profileId={ctx.profileId} currency={ctx.currency} />,
+  },
+  networth: {
+    title: 'Net worth',
+    size: { w: 5, h: 10 }, min: { w: 3, h: 6 },
+    render: (ctx) => <NetWorthCard profileId={ctx.profileId} />,
+  },
+  goals: {
+    title: 'Savings goals',
+    size: { w: 5, h: 12 }, min: { w: 3, h: 6 },
+    render: (ctx) => <GoalsCard profileId={ctx.profileId} currency={ctx.currency} />,
   },
 };
