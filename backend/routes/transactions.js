@@ -117,10 +117,22 @@ function buildFilterClauses(req, profileId) {
     clauses.push('t.amount_cents <= ?');
     params.push(toCents(Number(maxAmount)));
   }
+  // Free-text search: the description or the category name contains it,
+  // or - when it reads as an amount ("42.17", "$42") - the amount is
+  // exactly that. % and _ are escaped so they're searched for literally.
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
+  if (q) {
+    const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+    const asAmount = Number(q.replace(/[$,\s]/g, ''));
+    const amountClause = q.replace(/[$,\s]/g, '') !== '' && Number.isFinite(asAmount) && asAmount > 0 ? ' OR t.amount_cents = ?' : '';
+    clauses.push(`(t.description ILIKE ? OR EXISTS (SELECT 1 FROM categories cq WHERE cq.id = t.category_id AND cq.name ILIKE ?)${amountClause})`);
+    params.push(like, like);
+    if (amountClause) params.push(toCents(asAmount));
+  }
   return { clauses, params };
 }
 
-// GET /api/transactions?profileId=&type=&categoryId=&addedBy=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
+// GET /api/transactions?profileId=&q=&type=&categoryId=&addedBy=&from=&to=&minAmount=&maxAmount=&sort=&dir=&limit=&offset=
 router.get('/', asyncHandler(async (req, res) => {
   const profileId = await requireOwnedProfile(req, res, req.query.profileId);
   if (profileId === null) return;
@@ -144,7 +156,7 @@ router.get('/', asyncHandler(async (req, res) => {
     LEFT JOIN categories c ON c.id = t.category_id
     LEFT JOIN users u ON u.id = t.user_id
     WHERE ${clauses.join(' AND ')}
-    ORDER BY t.${sort} ${dir}
+    ORDER BY t.${sort} ${dir}, t.id ${dir}
     LIMIT ? OFFSET ?
   `;
   const rows = await query(sql, [...params, limit, offset]);
