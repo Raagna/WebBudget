@@ -21,6 +21,18 @@ function isValidDate(v) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
+// The rule for any NEW password (register, change, reset). bcrypt only
+// looks at the first 72 BYTES, so a longer one would silently match any
+// password sharing those 72 bytes - reject it instead. Bytes, not
+// characters: an accented or emoji character takes 2-4 bytes in UTF-8.
+// Logging in and confirming a password keep their looser limit, so an
+// account created before this cap can still sign in.
+const MAX_PASSWORD_BYTES = 72;
+
+function isValidPassword(v) {
+  return typeof v === 'string' && v.length >= 8 && Buffer.byteLength(v, 'utf8') <= MAX_PASSWORD_BYTES;
+}
+
 // Curated rather than exhaustive - covers the currencies a personal
 // finance app's users are realistically going to want. Keep this in sync
 // with frontend/src/utils/currencies.js, which mirrors it for the
@@ -83,6 +95,7 @@ function validateBody(rules) {
 module.exports = {
   isNonEmptyString,
   isValidEmail,
+  isValidPassword,
   isValidDate,
   isValidCurrency,
   isPositiveAmount,

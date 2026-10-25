@@ -50,8 +50,20 @@ export function AuthProvider({ children }) {
     logout();
   }, [logout]);
 
+  // The server signs out every other session and hands back a fresh token
+  // for this one (the old one stops working the moment the change lands).
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const { data } = await client.post('/auth/password', { currentPassword, newPassword });
+    localStorage.setItem('finance_token', data.token);
+  }, []);
+
+  const logoutEverywhere = useCallback(async () => {
+    await client.post('/auth/logout-all');
+    logout();
+  }, [logout]);
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, deleteAccount, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, register, logout, deleteAccount, changePassword, logoutEverywhere, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

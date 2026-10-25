@@ -160,6 +160,11 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // ---------- Members ----------
 
+// Active members only. A pending invite only exists when the invited email
+// has an account (POST below silently does nothing otherwise), so listing
+// it - even without a name or email - would tell the inviter, and every
+// other member, which emails are registered: exactly what the generic
+// invite response is there to hide. An invite shows up here once accepted.
 router.get('/:id/members', asyncHandler(async (req, res) => {
   const membership = await getMembership(req.params.id, req.userId);
   if (!membership || membership.status !== 'active') {
@@ -169,7 +174,7 @@ router.get('/:id/members', asyncHandler(async (req, res) => {
     `SELECT u.id AS user_id, u.name, u.email, pm.role, pm.status
      FROM profile_members pm
      JOIN users u ON u.id = pm.user_id
-     WHERE pm.profile_id = ?
+     WHERE pm.profile_id = ? AND pm.status = 'active'
      ORDER BY pm.role = 'owner' DESC, pm.created_at ASC`,
     [req.params.id]
   );

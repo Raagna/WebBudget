@@ -267,10 +267,10 @@ export default function Profiles() {
                   <>
                     {memberActionError && <div className="auth-error" style={{ marginBottom: 12 }}>{memberActionError}</div>}
                     <table className="ledger" style={{ marginBottom: isOwner ? 14 : 0 }}>
-                      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+                      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
                       <tbody>
                         {members.map((m) => {
-                          const isSelf = m.email === user?.email;
+                          const isSelf = m.user_id === user?.id;
                           // Any owner can act on anyone; a plain member can
                           // only act on themselves (leave). The backend is
                           // the real source of truth on whether an action
@@ -279,16 +279,15 @@ export default function Profiles() {
                           // are worth showing at all.
                           const canManage = isOwner;
                           const canRemove = isSelf || canManage;
-                          const isLastActiveOwner = m.role === 'owner' && m.status === 'active' && activeOwnerCount <= 1;
+                          const isLastActiveOwner = m.role === 'owner' && activeOwnerCount <= 1;
                           return (
                             <tr key={m.user_id}>
                               <td>{m.name}{isSelf && <span style={{ color: 'var(--ink-soft)' }}> (you)</span>}</td>
                               <td className="mono">{m.email}</td>
                               <td className="mono">{m.role}</td>
-                              <td>{m.status === 'pending' ? <span className="tag recurring">Invited</span> : <span className="tag">Active</span>}</td>
                               <td>
                                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                  {canManage && m.role === 'member' && m.status === 'active' && (
+                                  {canManage && m.role === 'member' && (
                                     <button className="btn btn-secondary btn-sm" onClick={() => handlePromote(p.id, m.user_id)}>Promote</button>
                                   )}
                                   {canManage && m.role === 'owner' && !isLastActiveOwner && (
@@ -327,6 +326,7 @@ export default function Profiles() {
                     {isOwner && (
                       <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8 }}>
                         They need an existing account with that email — there's no email notification sent, so let them know directly to check their Profiles page.
+                        They appear in this list once they accept; until then the list doesn't show invites, so it never reveals who has an account.
                         A profile can have more than one owner — promote a member any time you want to share management, not just usage.
                       </p>
                     )}

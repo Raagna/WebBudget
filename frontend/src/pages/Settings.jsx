@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext.jsx';
 import { categoryColor } from '../utils/categoryColors.js';
+import { passwordProblem, MIN_PASSWORD_LENGTH } from '../utils/password.js';
 
 const TYPE_LABEL = { expense: 'Spending', income: 'Income', both: 'Both' };
 
 export default function Settings() {
-  const { user, deleteAccount } = useAuth();
+  const { user, deleteAccount, changePassword, logoutEverywhere } = useAuth();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [hidden, setHidden] = useState([]);
@@ -20,6 +21,12 @@ export default function Settings() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwMessage, setPwMessage] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
 
   async function load() {
     const [catRes, hiddenRes] = await Promise.all([
@@ -62,6 +69,40 @@ export default function Settings() {
     load();
   }
 
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setPwError('');
+    setPwMessage('');
+    if (!pw.current) { setPwError('Enter your current password.'); return; }
+    const problem = passwordProblem(pw.next);
+    if (problem) { setPwError(`New password: ${problem}`); return; }
+    if (pw.next !== pw.confirm) { setPwError('The new passwords don’t match.'); return; }
+    setPwBusy(true);
+    try {
+      await changePassword(pw.current, pw.next);
+      setPw({ current: '', next: '', confirm: '' });
+      setPwMessage('Password changed. You’re still signed in here; every other device has been signed out.');
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not change your password.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function handleSignOutEverywhere() {
+    if (!confirm('Sign out on every device, including this one? You’ll need your password to sign back in.')) return;
+    setSignOutBusy(true);
+    try {
+      await logoutEverywhere();
+      navigate('/login');
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not sign out everywhere.');
+      setSignOutBusy(false);
+    }
+  }
+
+  const setPwField = (field) => (e) => setPw((p) => ({ ...p, [field]: e.target.value }));
+
   async function handleDeleteAccount(e) {
     e.preventDefault();
     setDeleteError('');
@@ -101,6 +142,41 @@ export default function Settings() {
         <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '12px 0 0' }}>
           Your name and email can't be changed here yet.
         </p>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Password and sessions</div>
+        {pwError && <div className="auth-error" style={{ marginBottom: 12 }} role="alert">{pwError}</div>}
+        {pwMessage && <div className="auth-notice" style={{ marginBottom: 12 }} role="status">{pwMessage}</div>}
+        <form className="password-form" onSubmit={handleChangePassword}>
+          {/* The hidden username lets password managers tie the new
+              password to this account. */}
+          <input type="email" autoComplete="username" value={user?.email || ''} readOnly hidden />
+          <div className="form-field">
+            <label htmlFor="current-password">Current password</label>
+            <input id="current-password" type="password" autoComplete="current-password" value={pw.current} onChange={setPwField('current')} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="new-password">New password</label>
+            <input id="new-password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} value={pw.next} onChange={setPwField('next')} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="confirm-password">Confirm new password</label>
+            <input id="confirm-password" type="password" autoComplete="new-password" value={pw.confirm} onChange={setPwField('confirm')} />
+          </div>
+          <button className="btn btn-primary" type="submit" disabled={pwBusy}>
+            {pwBusy ? 'Saving…' : 'Change password'}
+          </button>
+        </form>
+        <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '10px 0 0' }}>
+          At least {MIN_PASSWORD_LENGTH} characters. Changing it signs out every other device.
+        </p>
+        <div className="session-row">
+          <p>Lost a phone, or signed in on a shared computer? End every session at once, including this one.</p>
+          <button className="btn btn-secondary" type="button" onClick={handleSignOutEverywhere} disabled={signOutBusy}>
+            {signOutBusy ? 'Signing out…' : 'Sign out everywhere'}
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
