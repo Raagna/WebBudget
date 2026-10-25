@@ -32,7 +32,11 @@ app.disable('x-powered-by'); // don't advertise the stack in response headers
 // and dodge the limits. Set TRUST_PROXY to override either way.
 const trustProxy = process.env.TRUST_PROXY ?? (process.env.RENDER ? '1' : '0');
 app.set('trust proxy', Number(trustProxy) || false);
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+// Comma-separated, so two frontends can share one API (e.g. GitHub Pages and a
+// self-hosted copy while you move over): CORS_ORIGIN=https://a.example,https://b.example
+const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({ origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins }));
 
 // Mounted BEFORE the global JSON parser: receipt photos are far bigger than
 // its 100kb limit, and that parser would reject them with a 413 before the

@@ -702,6 +702,58 @@ database surgery, no coordinating a maintenance window.
   swap `HashRouter` back to `BrowserRouter` in `App.jsx` — those hosts
   support the server-side rewrites that need).
 
+## Install on your phone
+
+The site is an installable web app: it gets its own home-screen icon and
+opens full screen, with no browser bar and no app store.
+
+- **iPhone (Safari):** open the site → Share → **Add to Home Screen**.
+- **Android (Chrome):** open the site → ⋮ menu → **Add to home screen /
+  Install app** (Chrome may also offer it in a banner).
+
+What makes this work, all in `frontend/`:
+
+| File | Purpose |
+|---|---|
+| `public/manifest.webmanifest` | App name, colours, icons. Every path in it is relative, so it works under `/WebBudget/` on Pages and at `/` anywhere else. |
+| `public/icons/` | 192 and 512 px icons plus a maskable one (Android crops it to a circle or squircle), rendered from `favicon.svg`. |
+| `public/sw.js` | A small service worker: page loads are network-first (a new deploy shows up on the next open), hashed `assets/` files are cached, and **API requests are never cached**. |
+| `src/main.jsx` | Registers the service worker in production builds only. |
+
+Updating the app is the same as updating the site: push to `main`. There's
+nothing to reinstall.
+
+## Moving to self-hosting
+
+Nothing here is tied to GitHub Pages, Render or Neon: the frontend is a
+folder of static files, the API is a plain Node process, and the database
+is ordinary Postgres. To move:
+
+1. **Database:** `pg_dump "<Neon connection string>" > ledger.sql`, then
+   `psql "<your Postgres>" < ledger.sql`. Accounts and data come across
+   as they are.
+2. **API:** run `backend/` with Node (`npm run migrate && npm start`),
+   with `DATABASE_URL` pointing at your Postgres, the **same**
+   `JWT_SECRET` (or everyone simply signs in again), and `CORS_ORIGIN`
+   set to the new site's address. `CORS_ORIGIN` takes a comma-separated
+   list, so the old and new sites can both use the API while you switch.
+3. **Frontend:** `cd frontend && VITE_API_URL=https://<your-api>/api npm run build`
+   (leave `BASE_PATH` unset for a site at `/`), and serve `frontend/dist/`
+   from any web server: Caddy, nginx, or the same box as the API. An API
+   behind the same domain at `/api` works too (`VITE_API_URL=/api`); the
+   service worker leaves `/api/` alone.
+
+Two things to know:
+
+- **The site needs HTTPS** for phones to install it (plain
+  `http://192.168.x.x` won't). Easy ways at home: Tailscale (`tailscale
+  serve` gives your machine an HTTPS address on your own devices),
+  Cloudflare Tunnel, or a domain pointed at Caddy, which gets
+  certificates by itself.
+- **An installed app belongs to its address.** If the site moves to a new
+  address, remove the old home-screen icon, install from the new one and
+  sign in again. Your data is in the database, so nothing is lost.
+
 ## Feature ideas worth considering
 
 Beyond the smaller fixes in "Future improvements" above, here are bigger
