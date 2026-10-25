@@ -15,6 +15,7 @@ const investmentRoutes = require('./routes/investments');
 const newsRoutes = require('./routes/news');
 const redditRoutes = require('./routes/reddit');
 const debtRoutes = require('./routes/debts');
+const payoffRoutes = require('./routes/payoff');
 const goalRoutes = require('./routes/goals');
 const netWorthRoutes = require('./routes/networth');
 
@@ -66,6 +67,7 @@ app.use('/api/investments', investmentRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/reddit', redditRoutes);
 app.use('/api/debts', debtRoutes);
+app.use('/api/payoff', payoffRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/networth', netWorthRoutes);
 

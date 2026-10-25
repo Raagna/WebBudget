@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/goals', label: 'Goals' },
   { to: '/bills', label: 'Bills' },
   { to: '/debts', label: 'Debts' },
+  { to: '/payoff', label: 'Payoff plan' },
   { to: '/reports', label: 'Reports' },
   { to: '/net-worth', label: 'Net worth' },
   { to: '/investments', label: 'Investments' },
