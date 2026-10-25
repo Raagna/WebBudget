@@ -4,6 +4,9 @@ const { asyncHandler } = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/auth');
 const { isPositiveAmount, toCents, fromCents, validateBody } = require('../middleware/validate');
 const { normalizeSymbol, getQuotes, getRates, fetchQuote, saveQuote, QuoteNotFound } = require('../utils/quotes');
+const { parseWealthsimpleHoldings, HoldingsImportError } = require('../utils/holdingsImport');
+const { applyHoldings, syncSnapTrade } = require('../utils/holdingSync');
+const snaptrade = require('../utils/snaptrade');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -80,7 +83,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const profile = await queryOne(`SELECT currency FROM profiles WHERE id = ?`, [profileId]);
   const target = profile.currency || 'USD';
   const rows = await query(
-    `SELECT id, symbol, account, shares, book_cost_cents FROM holdings WHERE profile_id = ? ORDER BY symbol, account, id`,
+    `SELECT id, symbol, account, shares, book_cost_cents, source FROM holdings WHERE profile_id = ? ORDER BY symbol, account, id`,
     [profileId]
   );
   const quotes = await getQuotes(rows.map((r) => r.symbol));
@@ -113,6 +116,7 @@ router.get('/', asyncHandler(async (req, res) => {
       symbol: r.symbol,
       name: q?.name || r.symbol,
       account: r.account,
+      source: r.source,
       shares,
       currency: q?.currency || null,
       price: q ? q.price : null,
@@ -139,8 +143,21 @@ router.get('/', asyncHandler(async (req, res) => {
     },
     asOf,
     stale,
+    sources: await sourcesFor(req, profileId),
   });
 }));
+
+// When this profile last imported a Wealthsimple report / synced SnapTrade,
+// and whether this login can sync (see utils/snaptrade.js).
+async function sourcesFor(req, profileId) {
+  const rows = await query(`SELECT source, synced_at, as_of FROM holding_syncs WHERE profile_id = ?`, [profileId]);
+  const bySource = new Map(rows.map((r) => [r.source, { syncedAt: r.synced_at, asOf: r.as_of }]));
+  const user = await queryOne(`SELECT email FROM users WHERE id = ?`, [req.userId]);
+  return {
+    wealthsimpleCsv: bySource.get('wealthsimple_csv') || null,
+    snaptrade: { ...snaptrade.availability(user?.email), last: bySource.get('snaptrade') || null },
+  };
+}
 
 // POST /api/investments  { profileId, symbol, shares, account?, bookCost? }
 router.post(
@@ -173,6 +190,9 @@ router.put(
   asyncHandler(async (req, res) => {
     const holding = await requireHolding(req, res, req.params.id);
     if (!holding) return;
+    if (holding.source !== 'manual') {
+      return res.status(409).json({ error: 'This holding comes from Wealthsimple, so the next import or sync would undo an edit. Change it there instead.' });
+    }
     const fields = [];
     const params = [];
     if (req.body.shares !== undefined) { fields.push('shares = ?'); params.push(req.body.shares); }
@@ -186,6 +206,63 @@ router.put(
     res.json({ ok: true });
   })
 );
+
+// POST /api/investments/import  { profileId, csv: "<raw csv text>" }
+// A Wealthsimple Holdings report. Each account in the file replaces that
+// account's previous rows; other accounts and hand-entered holdings stay.
+router.post(
+  '/import',
+  express.json({ limit: '2mb' }),
+  validateBody({ csv: (v) => typeof v === 'string' && v.length > 0 && v.length < 2_000_000 }),
+  asyncHandler(async (req, res) => {
+    const profileId = await requireMember(req, res, req.body.profileId);
+    if (profileId === null) return;
+    let parsed;
+    try {
+      parsed = parseWealthsimpleHoldings(req.body.csv);
+    } catch (err) {
+      if (err instanceof HoldingsImportError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    res.json(await applyHoldings({ profileId, userId: req.userId, source: 'wealthsimple_csv', parsed }));
+  })
+);
+
+// Running two syncs of one profile at once, or one a few seconds after the
+// last, gains nothing and eats into SnapTrade's per-account rate limit.
+const SYNC_COOLDOWN_MS = 60 * 1000;
+const syncing = new Set();
+
+// POST /api/investments/snaptrade/sync  { profileId }
+// Pulls every connected brokerage account's positions from SnapTrade into
+// this profile (only for the login named in SNAPTRADE_OWNER_EMAIL).
+router.post('/snaptrade/sync', asyncHandler(async (req, res) => {
+  const profileId = await requireMember(req, res, req.body.profileId);
+  if (profileId === null) return;
+  const user = await queryOne(`SELECT email FROM users WHERE id = ?`, [req.userId]);
+  const can = snaptrade.availability(user?.email);
+  if (!can.available) {
+    return res.status(403).json({ error: "SnapTrade sync isn't set up for your login.", reason: can.reason });
+  }
+  const last = await queryOne(
+    `SELECT synced_at FROM holding_syncs WHERE profile_id = ? AND source = 'snaptrade'`,
+    [profileId]
+  );
+  if (syncing.has(profileId) || (last && Date.now() - new Date(last.synced_at).getTime() < SYNC_COOLDOWN_MS)) {
+    return res.status(429).json({ error: 'Synced a moment ago. Try again in a minute.' });
+  }
+  syncing.add(profileId);
+  try {
+    res.json(await syncSnapTrade({ profileId, userId: req.userId }));
+  } catch (err) {
+    if (err instanceof snaptrade.SnapTradeError) {
+      return res.status(502).json({ error: err.message });
+    }
+    throw err;
+  } finally {
+    syncing.delete(profileId);
+  }
+}));
 
 // DELETE /api/investments/:id
 router.delete('/:id', asyncHandler(async (req, res) => {
