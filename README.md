@@ -1,832 +1,180 @@
-# Ledger — Personal Finance Tracker
+# Ledger
 
-A full-stack personal finance app: track income, expenses, subscriptions, and
-bills, with a dashboard of summaries and charts. Built with a real persistent
-database and per-user data isolation — not a demo that stores data in
-frontend state.
+**A personal finance app for one person or a whole household:** everyday spending, bills and budgets, savings goals, debts, investments and net worth in one place. It answers the question most money apps bury: *am I OK this month?*
 
-This is a **personal tracker**, not a banking app: all data is manually
-entered, and the seeded sample data is clearly fictional.
+> "Ledger" is a working name; it's set in one place, `frontend/src/brand.js`.
 
-## Technology stack
+![The Ledger dashboard: a large "Safe to spend" figure with its working shown as a sum, beside bills due, recent transactions and spending by category](docs/images/dashboard.png)
 
-| Layer | Choice | Why |
-|---|---|---|
-| Frontend | React 18 + Vite | Fast dev loop, small footprint, no framework lock-in |
-| Charts | Recharts | Declarative, composable, good defaults for line/bar/pie |
-| Routing | React Router v6 (`HashRouter`) | Hash-based routing works on static hosts like GitHub Pages with no server-side rewrite rules needed |
-| Backend | Node.js + Express | Simple, well-understood, easy to extend |
-| Database | Postgres via `pg` (node-postgres) | Real concurrent-write support, works with free managed hosts (Neon, Supabase, Render), no persistent-disk juggling on the API host since data lives in the managed database |
-| Auth | JWT + bcrypt | Stateless auth, industry-standard password hashing (12 salt rounds) |
-| Validation | Hand-written allow-list validators | No hidden magic — every field is explicitly checked before touching SQL |
+<p align="center"><img src="docs/images/phone.png" alt="The same dashboard on a phone, stacked in one column" width="260"></p>
 
-**This project previously used SQLite** (`better-sqlite3`) and has since
-been converted to Postgres so the frontend can be hosted separately on
-GitHub Pages while the backend talks to a managed database. The
-conversion touched every route file: SQLite's synchronous
-`db.prepare(sql).get/all/run()` API became async `query`/`queryOne`/`run`
-helpers over a connection pool, `?` placeholders are auto-converted to
-Postgres's `$1, $2, ...` by a small helper in `db/index.js` (so the SQL in
-route files barely changed), and a few SQLite-specific SQL functions
-(`strftime`, `date('now', ...)`) became their Postgres equivalents
-(`TO_CHAR`, `CURRENT_DATE - INTERVAL`). See `db/index.js` for the
-compatibility layer.
+---
 
-## Architecture
+## What it does
 
-```
-┌─────────────┐      HTTPS/JSON       ┌──────────────┐      SQL       ┌──────────────┐
-│   Frontend   │ ───────────────────▶ │   Backend    │ ─────────────▶ │   Postgres   │
-│ React/Vite   │ ◀─────────────────── │ Express API  │ ◀───────────── │ (managed DB) │
-│ GitHub Pages │   Bearer JWT token   │  e.g. Render │                │ e.g. Neon    │
-└─────────────┘                       └──────────────┘                └──────────────┘
-                                              │
-                                       middleware/auth.js
-                                       (verifies JWT, sets
-                                        req.userId on every
-                                        protected request)
-```
+**Day to day**
+- **Safe to spend:** income so far − spent − bills still due − anything scheduled. It shows the sum written out, an amount per day, and the change since this point last month.
+- **Transactions:** add by hand, or **photograph a receipt or bill** (photo or PDF). A vision model running *on your own machine* reads the amount, date and merchant, so nothing is sent to an outside service. Search, filters, bulk edit, CSV export.
+- **Bank import:** load the CSV your bank gives you (TD EasyWeb is supported, as is this app's own export).
+  - Rows already imported are skipped.
+  - Categories are filled in from your past choices, about 100 Canadian merchants, bank codes (e-transfers, NSF fees, TFSA and the like), and the local model for anything left.
+  - Weekly, monthly and yearly repeats are flagged as recurring.
+- **Budgets per category:** each category has its own colour. Budgets warn when spending is running ahead of the month.
+- **Bills:** overdue, upcoming and paid. Marking a bill paid can record the expense too.
 
-The frontend and backend are deployed to **separate hosts** — GitHub Pages
-only serves static files, it has no server runtime, so it cannot run the
-Express API or talk to Postgres directly. See Deployment below.
+**Planning**
+- **Savings goals:** a target and a date. It shows what to put in each month, plus contributions, withdrawals and history.
+- **Payoff plan:** for your own loans and cards, it compares avalanche, snowball and minimum payments only, with the payoff date and total interest for each.
+- **Reports:** income versus spending over time, and what you kept or overspent each month.
 
-Layers are kept separate on purpose:
-- **`middleware/auth.js`** only knows how to verify identity — it has no idea
-  what a transaction or bill is.
-- **`routes/*.js`** each own one resource and never trust a `user_id` from
-  the client — they always use `req.userId` from the verified token.
-- **`db/index.js`** owns the connection pool, the SQLite-placeholder-style-to-Postgres
-  translation, and migrations; route files never open their own connections.
+**Wealth**
+- **Investments:** holdings priced live (Yahoo Finance) and converted to the budget's currency. Enter them by hand, import Wealthsimple's *Holdings report* CSV, or sync through SnapTrade.
+- **Net worth:** accounts you own and owe with dated balances, investments at their live value, and a 12-month chart.
 
-## Database schema
+**Together**
+- **Households:** share a budget by invite. Members see one shared ledger, and every row shows who added it. Owners manage membership.
+- **Who owes what:** split shared costs equally or by amount, record paybacks, and see the fewest payments that settle everyone up.
 
-```
-users              id, name, email (unique), password_hash, token_version, created_at
-password_resets    id, user_id, token_hash (SHA-256, never the token), expires_at, used_at
-profiles           id, user_id, name, currency, created_at
-profile_members    profile_id, user_id, role (owner/member), status (active/pending), invited_by
-categories         id, user_id (NULL = global default), name, type, icon, is_default
-hidden_categories  user_id, category_id  (per-user hide of a default category)
-transactions       id, user_id, profile_id, category_id, amount_cents, type,
-                   description, occurred_on, is_recurring, recurring_interval
-subscriptions      id, user_id, category_id, name, amount_cents, billing_cycle,
-                   next_billing_on, is_active   (API only, not in the UI)
-bills              id, user_id, profile_id, category_id, name, amount_cents,
-                   due_on, is_paid, is_recurring
-```
+**Make it yours**
+- **A dashboard you arrange:** drag widgets anywhere, resize them, add or remove them. Wide screens get an 18-column grid. Save layouts as **presets**, which go with your account into every household.
+- **Extra widgets:** financial news (CBC, Globe and Mail, MarketWatch, Bank of Canada) and Reddit (subreddits and threads you follow, ranked by upvotes and how recent they are).
+- **Any currency** per budget, in about 30 currencies.
+- **Install on your phone:** it's an installable web app with its own home-screen icon. No app store needed.
 
-Full DDL: `backend/db/migrations/001_initial.sql`, `002_household_members.sql`,
-`003_profile_currency.sql` and `004_bills_profile.sql` (bills moved from
-per-user to per-profile, existing bills backfilled to their owner's oldest profile)
-(see "Migrations & upgrading" below for how later changes are structured).
-Notes:
-- Amounts are stored as **integer cents**, never floats, to avoid rounding
-  errors when summing totals.
-- Every financial table has `user_id NOT NULL REFERENCES users(id)`.
-- **Profiles** are separate budgeting contexts (e.g. "Personal" and
-  "Household"). Every transaction belongs to exactly one profile;
-  switching the active profile in the sidebar switches the entire
-  dashboard, transaction list, and reports to that profile's data.
-  Categories are *not* profile-scoped — a user manages one category list
-  shared across all of their profiles.
-- **Currency is set per profile** (`profiles.currency`, a 3-letter ISO code,
-  defaults to `USD`). All of a profile's transactions are denominated in
-  that one currency — there is deliberately **no cross-currency conversion
-  or aggregation**; a "Household" profile in EUR and a "Personal" profile
-  in USD are just two entirely separate ledgers, never combined into one
-  number. `amount_cents` was already a currency-agnostic fixed-point value
-  (major unit × 100) before this existed, so no other schema or storage
-  change was needed — currency is purely what the formatting layer treats
-  that number as meaning.
-- **Shared households**: `profile_members` is what actually grants access
-  to a profile, not `profiles.user_id` (which just records who originally
-  created it). A row's `role` is `owner` (can rename/delete the profile,
-  change its currency, manage membership, and promote/demote other
-  owners) or `member` (can view and add/edit/delete transactions, but not
-  manage who else is in it). **A profile can have more than one active
-  owner** — promoting a member to co-owner is an owner-only action; the
-  app only blocks removing/demoting the *last* remaining active owner, so
-  a profile is never left ownerless. A row's `status` is `pending`
-  (invited, not yet accepted — grants no access) or `active` (can actually
-  use the profile). Nobody is added to a shared budget without accepting
-  an invite first. Every route that touches a profile's data —
-  transactions, bulk operations, dashboard, reports — checks
-  `profile_members` with `status = 'active'`, not who created the
-  transaction or the profile.
-- Categories are global (`user_id IS NULL`) for the 12 predefined ones, or
-  scoped to a user for custom ones — queried as a `UNION`-style `WHERE
-  user_id IS NULL OR user_id = ?`.
-- **Known bug, fixed:** the original schema relied on `UNIQUE(user_id, name)`
-  to stop duplicate default categories. SQL (both SQLite and Postgres) treats
-  every `NULL` as distinct from every other `NULL`, so that constraint never
-  actually caught duplicates among the global (`user_id IS NULL`) rows —
-  each server restart silently re-inserted all 12 defaults. Fixed with a
-  **partial unique index**: `CREATE UNIQUE INDEX ... ON categories(name)
-  WHERE user_id IS NULL`. This fix is baked into `001_initial.sql`, so it
-  applies to every database from the start — no manual cleanup needed. It
-  was re-verified against Postgres specifically (restarted the server
-  multiple times, category count stayed at exactly 12).
-- A user can remove a default category from their own view via
-  `hidden_categories` without deleting the shared row (which would remove
-  it for every other account on the instance) — Settings offers a
-  "Restore" action for anything hidden this way.
-- Money amounts (`amount_cents`) are `INTEGER`; date columns
-  (`occurred_on`, `due_on`, `next_billing_on`) are `DATE`; boolean flags
-  are real `BOOLEAN` (Postgres, unlike SQLite, has a native boolean type —
-  the app no longer stores them as 0/1 integers). `db/index.js` overrides
-  node-postgres's default `DATE` parser to return plain `'YYYY-MM-DD'`
-  strings instead of JS `Date` objects, avoiding a class of timezone-shift
-  bugs where a date silently becomes the previous/next day depending on
-  server timezone.
+**Account safety**
+- Password change and reset by email, "sign out everywhere", and rate-limited sign-in.
+- Households keep their data when a member deletes their account.
 
-## API endpoints
+---
 
-All routes under `/api` except `/api/auth/*` require `Authorization: Bearer <token>`.
+## Tech stack
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/api/auth/register` | Create account, returns JWT |
-| POST | `/api/auth/login` | Returns JWT |
-| POST | `/api/auth/password` | Change password — `{ currentPassword, newPassword }`; signs out every other session and returns a fresh JWT for this one |
-| POST | `/api/auth/logout-all` | Sign out everywhere — every token issued so far stops working, this one included |
-| POST | `/api/auth/forgot-password` | `{ email }` — always `202` with the same message; emails a one-hour, single-use reset link if the account exists |
-| POST | `/api/auth/reset-password` | `{ token, password }` — sets a new password and signs out every session |
-| DELETE | `/api/auth/account` | Permanently delete your own account — requires `{ password }` to confirm; blocked (`400`) if you own a shared profile with other active members |
-| GET | `/api/categories` | Default + user's custom categories, minus anything hidden |
-| POST | `/api/categories` | Create a custom category |
-| DELETE | `/api/categories/:id` | Delete own custom category, or hide a default one for this user |
-| GET | `/api/categories/hidden` | List default categories this user has hidden |
-| POST | `/api/categories/:id/restore` | Un-hide a previously hidden default category |
-| GET | `/api/profiles` | List profiles this user is an active member of, with their `role` and `currency` |
-| POST | `/api/profiles` | Create a profile `{ name, currency? }` (defaults to `USD`) — creator becomes its owner |
-| PUT | `/api/profiles/:id` | Rename and/or change currency `{ name?, currency? }` (owner only — any owner, not just the creator) |
-| DELETE | `/api/profiles/:id` | Delete a profile, its transactions, and all memberships (any owner, blocked if it's the user's last remaining profile) |
-| GET | `/api/profiles/invites` | Pending invites sent to this user |
-| POST | `/api/profiles/invites/:profileId/accept` | Accept a pending invite |
-| POST | `/api/profiles/invites/:profileId/decline` | Decline a pending invite |
-| GET | `/api/profiles/:id/members` | List a profile's members and their role/status (any active member) |
-| POST | `/api/profiles/:id/members` | Invite by email `{ email }` (owner only) — always returns the same generic response whether or not the email matches an account, to avoid leaking who's registered |
-| DELETE | `/api/profiles/:id/members/:userId` | Remove another member (owner only), or remove yourself to leave — blocked if you're the profile's only remaining active owner |
-| POST | `/api/profiles/:id/members/:userId/promote` | Promote an active member to co-owner (owner only) — no cap on how many owners a profile can have |
-| POST | `/api/profiles/:id/members/:userId/demote` | Demote a co-owner back to member (owner only) — blocked if they're the last remaining active owner |
-| GET | `/api/transactions?profileId=` | List, scoped to a profile, with `type`, `categoryId`, `from`, `to`, `minAmount`, `maxAmount`, `sort`, `dir`, `limit`, `offset` — shows the whole shared ledger, not just what the requester personally entered |
-| GET | `/api/transactions/export?profileId=&...` | Download every transaction matching the same filters as the list above as a CSV file (no pagination — the full matching set) |
-| POST | `/api/transactions/import` | Import transactions from CSV text: `{ profileId, csv }` — accepts this app's export or a TD EasyWeb download; returns `{ format, imported, duplicates, duplicateRows, autoCategorized, errors: [{row, reason}], warnings: [{row, reason}], totalRows }`; rows already imported into the profile are skipped as duplicates; an unrecognized category name doesn't fail the row, it imports as Uncategorized with a warning |
-| POST | `/api/transactions` | Create — body includes `profileId` |
-| PUT | `/api/transactions/:id` | Update — any active member of the transaction's profile can edit it, not just whoever created it |
-| DELETE | `/api/transactions/:id` | Delete — same access rule as update |
-| POST | `/api/transactions/bulk-delete` | Delete many at once: `{ ids: [...] }` — multi-select in the UI |
-| PATCH | `/api/transactions/bulk-update` | Bulk-edit category and/or recurring flag: `{ ids: [...], categoryId?, isRecurring? }` |
-| GET/POST/PUT/DELETE | `/api/subscriptions[/:id]` | Available in the API; not currently linked from the UI |
-| GET | `/api/bills?profileId=` | All bills in a profile, soonest due first |
-| POST/PUT/DELETE | `/api/bills[/:id]` | Create (body includes `profileId`), edit, delete — any active member of the bill's profile |
-| POST | `/api/bills/:id/pay` | Mark paid; with `{ expense: { amount, date, description?, categoryId? } }` also records the expense transaction, atomically |
-| GET | `/api/dashboard/summary?profileId=&month=YYYY-MM` | Totals, spending by category, recent transactions — scoped to one profile |
-| GET | `/api/dashboard/trends?profileId=&months=N` | Income vs. expenses per month, for charts — scoped to one profile |
+| | |
+|---|---|
+| Frontend | React 18, Vite, React Router (hash routing, so static hosts like GitHub Pages work), Recharts, react-grid-layout, Figtree |
+| Backend | Node.js, Express, `pg` |
+| Database | PostgreSQL. Numbered SQL migrations that run on start. Money is stored as integer cents |
+| Auth | JWT (revocable through a per-user token version) and bcrypt |
+| Scanning | [Ollama](https://ollama.com) with `qwen2.5vl:7b`, on your own machine |
+| Tests | Node's built-in test runner, with every test file in its own throwaway Postgres schema. GitHub Actions runs them on each PR |
 
-## Authentication & security
+---
 
-- Passwords hashed with **bcrypt**, 12 salt rounds — never stored or logged
-  in plaintext.
-- **JWT** (7-day expiry) signed with a secret from `.env` — the server
-  refuses to boot if `JWT_SECRET` is unset.
-- **Revocable sessions**: every token carries the user's `token_version`,
-  and `middleware/auth.js` checks it against the database on each request.
-  "Sign out everywhere", changing the password and resetting it all bump
-  the version, which kills every outstanding token at once. A deleted
-  account's tokens stop working immediately too.
-- **Password rules**: 8 characters to 72 *bytes* — bcrypt ignores anything
-  past byte 72, so longer passwords are rejected rather than silently
-  truncated.
-- **Password reset**: "Forgot password?" on the login page emails a link
-  with a random token that works once, for one hour. Only its SHA-256 is
-  stored. The request always gets the same answer, sent before the
-  account is even looked up, so neither the response nor its timing
-  reveals whether an email is registered. With no `SMTP_*` settings the
-  link is printed to the server console instead (see `backend/.env.example`).
-- **User-data isolation**: every query touching `transactions` or `bills`
-  goes through an active `profile_members` row for `req.userId`, and
-  `subscriptions` filters by `user_id = req.userId`, taken only from the
-  verified token — this was tested by creating two accounts and confirming
-  one user gets `404`, not another user's data, when guessing an ID.
-- **Shared-household access control**: a profile's data is only reachable
-  through an *active* row in `profile_members` — `pending` invites grant
-  nothing (tested: a freshly-invited account gets `404` on the profile's
-  transactions until it explicitly accepts). Only the `owner` role can
-  rename/delete a profile or manage its membership; `member` role can use
-  the shared ledger but not manage who else has access — every mutating
-  member-management route checks the caller's role before acting, tested
-  with a `member` account attempting to invite (`403`) and remove other
-  members (`403`).
-- **Input validation**: hand-written allow-list validators
-  (`middleware/validate.js`) reject malformed amounts, dates, emails, and
-  strings before they reach SQL.
-- **Parameterized queries** throughout — route files write `?`
-  placeholders for readability, and `db/index.js` converts them to
-  Postgres's `$1, $2, ...` before the query ever reaches `pg`; the one
-  place a column name is interpolated (`ORDER BY`) is checked against a
-  hardcoded allow-list first.
-- **Rate limiting** on `/api/auth/*` (20 requests / 15 min) to slow down
-  credential stuffing.
-- **Generic error messages** on login/registration/password reset so
-  responses don't reveal whether an email is registered. For the same
-  reason a household's member list only shows people who have accepted:
-  a pending invite exists only when the email has an account, so listing
-  it would give that away.
-- **No sensitive data in responses**: `password_hash` is never selected into
-  API responses; the global error handler returns a generic 500 instead of
-  stack traces.
+## Quick start
 
-## Frontend structure
-
-```
-frontend/src/
-  api/client.js            axios instance, attaches JWT, redirects to /login on 401
-  context/
-    AuthContext.jsx        login/register/logout state, persisted to localStorage
-    ProfileContext.jsx     profiles + active profile + pending invite count + household actions
-  components/
-    Layout.jsx              sidebar + mobile hamburger toggle + profile switcher + invite badge
-    StatCard.jsx             dashboard summary tile
-    TransactionForm.jsx      shared add/edit form
-    BillForm.jsx             bill add/edit form (also takes a scanned draft)
-  pages/
-    Login.jsx / Register.jsx
-    Dashboard.jsx            summaries + charts (scoped to active profile)
-    Transactions.jsx         filterable/sortable ledger, multi-select + range select, CSV import/export
-    Bills.jsx                overdue / upcoming / paid bills, scan a bill, mark paid (optionally adding the expense)
-    Reports.jsx              longer-range trend charts
-    Profiles.jsx             create/rename/delete/currency, invites, member management, promote/demote
-    Settings.jsx             category management (add/remove/hide/restore), account deletion
-  utils/
-    format.js                money/date formatting helpers (formatMoney takes a currency code)
-    currencies.js             supported currency list for the dropdown UI (mirrors the backend's list)
-    scan.js                   photo/PDF -> downscaled JPEG for the scan route (shared by both forms)
-  styles.css                  design tokens + all component styles
-```
-
-**Note:** the `Subscriptions.jsx` page was removed along with its sidebar
-link to keep navigation focused. The underlying `/api/subscriptions`
-endpoints are still there if you want to bring the UI back later.
-
-**Mobile navigation:** below 720px wide, the sidebar collapses into a top
-bar with a hamburger toggle. Tapping it drops down the full nav (profile
-switcher, links, account footer) as an overlay; tapping a link, or tapping
-outside the panel, closes it again. The account footer's email address
-truncates with an ellipsis rather than overlapping the Sign out button
-regardless of how long it is (a `min-width: 0` fix on the flex container —
-without it, a flex child won't shrink below its content's natural width,
-which is what was letting a long email push into the button).
-
-## Dashboard & financial features
-
-- **Multi-household budgeting**: create separate **profiles** (e.g.
-  "Personal" and "Household") from the Profiles tab. Each profile has its
-  own transactions, dashboard, and reports — switching profiles in the
-  sidebar switches the entire financial picture. A user always keeps at
-  least one profile; deleting a profile deletes its transactions with a
-  confirmation first.
-- **Shared households**: invite another account into a profile so more
-  than one person can see and manage the same budget, including sharing
-  ownership itself via promote/demote. See "Shared households" below for
-  the full flow.
-- **Per-profile currency**: each profile is denominated in one currency of
-  your choice (defaults to USD). See "Multi-currency" below.
-- **Summary tiles**: monthly income, expenses, remaining, and largest
-  category for the active profile.
-- **Charts**: income vs. expenses line chart (Dashboard, last 9 months),
-  category pie chart (current month), category bar chart, and a
-  longer-range Reports page with an area chart and net-by-month bar chart.
-- **Filtering/sorting**: transactions can be filtered by **type**
-  (income/expense — a filter now, not a separate page), category, and date
-  range, and sorted by date, amount, description, or type, ascending or
-  descending.
-- **CSV import/export**: export every transaction matching your current
-  filters as a CSV file, or import transactions from one (date, type,
-  description, category, amount, recurring, recurring_interval columns —
-  category is matched by name, and an unrecognized name imports the row
-  as Uncategorized with a warning rather than failing it outright). Import
-  reports exactly which rows succeeded, which were skipped and why, and
-  which imported with a caveat.
-- **TD bank import**: the same Import button takes the CSV TD EasyWeb
-  downloads (Account Activity → Download → Spreadsheet, `accountactivity.csv`:
-  no header; date, description, withdrawal, deposit, balance). Withdrawals
-  become expenses and deposits income. Every imported row stores a hash of
-  profile + date + type + amount + description (`import_hash`, migration
-  007), so importing an overlapping download again skips the rows already
-  there and reports them as duplicates. Bank rows are auto-categorized from
-  how the profile categorized the same merchant before, falling back to
-  description keywords (`backend/utils/bankImport.js`).
-- **Multi-select bulk actions**: check multiple transactions in the ledger
-  to bulk-delete them or bulk-reassign their category in one action.
-  **Shift+click** a checkbox to select every row between it and your last
-  click, inclusive (same convention as Gmail/file explorers), or use the
-  **Select all** button to grab everything currently loaded at once.
-- **Recurring tracking**: transactions support a recurring flag with an
-  interval (weekly/monthly/yearly).
-- **Category management**: add custom categories, remove your own, or hide
-  a built-in default from your view (reversible — see Settings).
-- **Account deletion**: from Settings, permanently delete your account
-  (requires re-entering your password). Deletes everything you own outright
-  — profiles, custom categories, transactions — but is blocked if you
-  currently own a shared household with other active members, so deleting
-  your account can never silently destroy a budget other people are
-  actively using. Remove those members (or have them leave) first, and it
-  goes through.
-
-## Shared households
-
-Any profile can be shared with another account — useful for splitting
-"Household" between partners while keeping "Personal" private to each of
-you.
-
-- **Inviting**: from the Profiles page, expand a profile you own and enter
-  someone's email. This only works if they already have an account with
-  that email — there's no email/notification system, so let them know
-  directly to check their Profiles page. The invite response is
-  intentionally the same whether or not that email matches an account
-  (same principle as login/registration), so inviting doesn't reveal who's
-  registered.
-- **Accepting**: the invited person sees a "Pending invites" card at the
-  top of their Profiles page (and a badge on the sidebar's Profiles link)
-  with Accept/Decline. Nothing is shared until they explicitly accept —
-  being invited grants no access on its own.
-- **Once accepted**, a `member` can see the full shared ledger and
-  add/edit/delete any transaction in it — including ones the other person
-  entered, which is what makes it actually collaborative rather than two
-  people each only managing their own rows. A `member` cannot rename or
-  delete the profile, change its currency, invite/remove other members,
-  or promote/demote anyone.
-- **Co-ownership**: a profile can have more than one `owner` — from the
-  Members panel, any owner can **promote** an active member to co-owner,
-  or **demote** a co-owner back to member. This is for households where
-  both partners want equal management rights rather than one person being
-  the sole point of control. The only rule the app enforces is that a
-  profile always has at least one active owner: demoting or removing the
-  *last* remaining owner is blocked, but any owner can freely leave, be
-  demoted, or be removed as long as at least one other owner stays active
-  — promote a co-owner first if you want to step back from sole
-  ownership.
-- **Leaving**: any member — owner or not — can remove themselves from a
-  shared profile at any time from the Members panel, unless doing so would
-  leave the profile with zero active owners.
-- This was tested end-to-end with real accounts: one invited, the invitee
-  had no access until accepting, accepting granted it, a transaction added
-  by one account was edited by the other, a `member` account was confirmed
-  unable to invite/remove/promote/demote (`403`), an owner was confirmed
-  able to leave once a co-owner existed, and a sole owner was confirmed
-  unable to demote themselves or leave (`400`, told to promote someone
-  else or delete the profile instead).
-
-## Multi-currency
-
-Each profile is denominated in exactly one currency, chosen when the
-profile is created (defaults to USD) and changeable later by any owner
-from the Profiles page's Edit control. There are ~30 common currencies to
-choose from (`frontend/src/utils/currencies.js`, mirrored server-side in
-`backend/middleware/validate.js`'s `SUPPORTED_CURRENCIES` — keep both in
-sync if you add one).
-
-**What this does and doesn't do:** all of a profile's amounts, totals, and
-charts format using that profile's currency (`Intl.NumberFormat` handles
-each currency's correct symbol and decimal places automatically — no
-special-casing needed for e.g. JPY's zero decimal places). What it does
-**not** do is convert between currencies or combine totals across
-profiles with different currencies — a EUR "Household" and a USD
-"Personal" are simply two separate ledgers, each internally consistent,
-never added together into one number. That's a deliberate scope
-boundary, not a missing feature: real currency conversion needs live
-exchange rates and a decision about which historical rate applies to a
-past transaction, which is a meaningfully bigger feature than "pick a
-currency for a profile."
-
-## Database seed data
-
-`backend/seed.js` creates one demo account
-(`demo@example.com` / `DemoPass123!`) with **two profiles** — "Personal"
-(USD) and "Household" (**EUR**, deliberately different, so the currency
-formatting is visibly exercised without any extra setup) — and ~9 months
-of clearly fictional transaction history split realistically between them
-(rent, shared utilities, and groceries in Household; subscriptions,
-entertainment, and the user's own salary in Personal, with random
-variance so months aren't identical). It also seeds a second account,
-`partner@example.com` / `DemoPass123!`, already an **active member** (not
-owner) of the "Household" profile — log in as either account to see the
-shared budget, or as the partner account to see what a `member`'s view
-and permissions look like without needing to run through the invite flow
-yourself first. It also seeds a few bills (three in Household, one overdue in
-Personal) and some sample subscriptions, which are API-only.
-
-## Project file structure
-
-```
-finance-app/
-  .github/workflows/
-    deploy-pages.yml  builds frontend/ and publishes it to GitHub Pages on push to main
-  backend/
-    db/                migrations/(001_initial.sql ... 004_bills_profile.sql), migrate.js, index.js (pool + migration runner)
-    middleware/        auth.js, validate.js, asyncHandler.js
-    routes/            auth.js, categories.js, profiles.js, transactions.js, subscriptions.js, bills.js, dashboard.js
-    utils/csv.js       dependency-free CSV parse/generate for import/export
-    utils/bankImport.js  bank CSV detection/parsing (TD), import duplicate hashes, auto-categorization
-    server.js
-    seed.js
-    package.json
-    .env
-  frontend/
-    src/               (see Frontend structure above)
-    index.html
-    vite.config.js
-    package.json
-    .env
-```
-
-## Setup & installation
-
-Requires Node.js 18+ and a Postgres database (a local install, or a free
-managed one — see Deployment below for permanent-free options).
+You need **Node.js 18+** and **PostgreSQL**. Receipt scanning also needs [Ollama](https://ollama.com); everything else works without it.
 
 ```bash
-# 1. Backend
-cd backend
-npm install
-cp .env.example .env    # set DATABASE_URL to your Postgres connection string, and a real JWT_SECRET
-npm run migrate            # creates/upgrades the schema
-npm run seed                 # optional: adds demo@example.com / DemoPass123! with sample data
-npm start                     # http://localhost:4000
-
-# 2. Frontend (separate terminal)
-cd frontend
-npm install
-npm run dev               # http://localhost:5173
+git clone https://github.com/Raagna/WebBudget.git
+cd WebBudget
 ```
 
-Open `http://localhost:5173` and sign in with the demo account, or register
-a new one.
+**1. API** (http://localhost:4000)
 
-(`npm start` also runs pending migrations automatically on boot, before it
-starts accepting requests — `npm run migrate` is there so you can run that
-as a separate step in a deploy pipeline if you'd rather apply migrations
-before a new server version starts serving traffic, rather than relying on
-the inline check.)
+```bash
+cd backend
+npm install
+cp .env.example .env     # set DATABASE_URL and a long random JWT_SECRET
+npm run seed             # optional: demo data (see below)
+npm start                # applies any new migrations, then starts
+```
 
-**No Postgres installed locally?** `DATABASE_URL` in `.env.example`
-defaults to `postgresql://postgres:postgres@localhost:5432/finance_dev` —
-either install Postgres locally and `createdb finance_dev`, or skip local
-Postgres entirely and point `DATABASE_URL` straight at a free Neon or
-Supabase database (see Deployment) even for local development.
+**2. Web app** (http://localhost:5173), in a second terminal:
 
-## Migrations & upgrading
+```bash
+cd frontend
+npm install
+npm run dev              # or: npm run dev:lan  to open it from your phone on the same Wi-Fi
+```
 
-Schema changes live as individual, numbered SQL files in
-`backend/db/migrations/`, tracked in a `schema_migrations` table so each
-file only ever runs once against a given database. This means **updating
-to a new version of this app never requires deleting your database** — you
-pull the new code, run `npm run migrate` (or just restart the server), and
-any new migration files apply on top of your existing data.
+Then sign in with the demo account, or register.
 
-Rules for adding a future schema change:
-1. Create `backend/db/migrations/00N_short_description.sql` where `N` is
-   the next number.
-2. Never edit an already-shipped migration file. A database that already
-   applied it won't re-run it, so an edit only affects fresh installs and
-   silently diverges from everyone else's database. Write a new migration
-   instead — `ALTER TABLE ... ADD COLUMN`, a new `INSERT` for a new default
-   category, a data backfill, etc.
-3. Wrap anything destructive with care: each migration runs inside a
-   transaction automatically. Postgres's `ALTER TABLE` is more capable than
-   SQLite's (it supports `DROP COLUMN`, `ALTER COLUMN ... TYPE`, etc.
-   directly), but changing a column's type on a large table can still lock
-   it for the duration — for anything risky, the safe pattern is still add
-   a new column, backfill it, then drop the old one in a later migration.
+| Demo account | Password | What's in it |
+|---|---|---|
+| `demo@example.com` | `DemoPass123!` | A **Personal** (USD) and a **Household** (EUR) budget with about nine months of made-up history and some bills |
+| `partner@example.com` | `DemoPass123!` | A member of that Household, to see what sharing looks like |
 
-This was tested by seeding real data, adding a new migration file that
-inserts an additional default category, and confirming the upgrade applies
-the new category while leaving every existing transaction and login
-untouched — done twice, once against SQLite during the original migration
-system design and again against Postgres after the database conversion.
+> Never run `npm run seed` against a real deployment: it creates accounts with publicly known passwords.
 
-## Testing instructions
+**3. Receipt scanning (optional)**
 
-Manual flows to verify (all confirmed working during development):
+```bash
+ollama pull qwen2.5vl:7b
+```
 
-1. **Register** a new account → lands on Dashboard with a "Personal"
-   profile auto-created and zero data.
-2. **Add a transaction** (income and expense) → appears in Dashboard recent
-   list and Transactions page; totals update.
-3. **Edit / delete** a transaction → list and totals update immediately.
-4. **Filter transactions** by type, category, and date range; **sort** by
-   amount, date, description, or type, ascending/descending.
-5. **Multi-select**: check several transactions, bulk-delete them, and
-   separately bulk-reassign a category — confirm the count in the toolbar
-   matches what changed.
-6. **Profiles**: create a second profile (e.g. "Household"), add a
-   transaction while it's active, switch back to "Personal" and confirm
-   that transaction is *not* visible there. Try deleting your only
-   remaining profile — should be blocked with a clear message.
-7. **Categories**: add a custom category; hide a default category from
-   Settings and confirm it disappears from the add-transaction dropdown;
-   restore it and confirm it reappears.
-8. **Category duplication regression check**: restart the backend server
-   two or three times in a row, then reload Settings — the category count
-   should stay at 12 (+ any custom ones), never grow.
-9. **Shared households**: from Profiles, invite a second account (by
-   email) into a profile you own. Log in as that second account — it
-   should show up under Pending invites, and the profile itself should
-   *not* be visible or reachable yet (confirm `GET
-   /api/transactions?profileId=` for that profile 404s before accepting).
-   Accept it, confirm the profile now appears with role `member`, add a
-   transaction as the invited account, then confirm the original owner can
-   see and edit that same transaction. Confirm the `member` account gets
-   `403` trying to invite someone else or remove another member. Have the
-   member leave (self-removal from the Members panel), confirm the profile
-   disappears from their list again.
-10. **Data isolation**: register a second, unrelated account in a
-    private/incognito window, confirm it starts empty and cannot see or
-    modify the first account's data or profiles (try hitting `PUT
-    /api/transactions/:id` or `GET /api/transactions?profileId=` for
-    another user's ID — should 404).
-11. **Auth**: log out, confirm protected pages redirect to `/login`; try a
-    wrong password, confirm a generic error with no hint about account
-    existence.
-12. **If deployed to GitHub Pages**: navigate to a page like Transactions,
-    then hard-refresh the browser — should reload the same page correctly
-    (confirms hash-based routing is working) rather than showing a GitHub
-    Pages 404.
-13. **Bulk selection**: on Transactions, click one checkbox, then shift+click
-    a checkbox several rows down — every row in between should become
-    selected. Use the "Select all" button and confirm it grabs every
-    currently-loaded transaction, not just the visible ones you'd clicked.
-14. **Mobile nav**: shrink the browser below ~720px wide (or use devtools'
-    device toolbar) — the sidebar should collapse to a top bar with a
-    hamburger icon; tapping it should drop down the full nav as an
-    overlay, and tapping a link or tapping outside the panel should close
-    it again.
-15. **Account deletion**: from Settings, try deleting your account with
-    the wrong password (should show an error, account untouched). While
-    you own a shared profile with another active member, try deleting —
-    should be blocked with a message naming the profile. Remove that
-    member (or have a second test account leave), then delete again —
-    should succeed and log you out; confirm the old login now fails.
-16. **Co-ownership**: from a profile's Members panel (as owner), promote a
-    member to co-owner and confirm their role updates. As the *original*
-    owner, leave the profile (now safe since a co-owner remains) and
-    confirm the profile disappears from your list but the co-owner still
-    has full access. As the sole remaining owner, try to demote yourself
-    or leave — both should be blocked with a clear message.
-17. **Currency**: create a profile with a non-USD currency, add a
-    transaction, and confirm the dashboard, transaction list, and chart
-    axes all show the correct currency symbol and formatting (e.g. `¥` for
-    JPY with no decimal places, `€1,234.56` for EUR). Switch between a USD
-    and non-USD profile and confirm the numbers never mix — no conversion,
-    no combined total.
-18. **CSV export/import**: export a profile's transactions, open the file,
-    confirm the data matches what's in the app. Re-import that same file
-    into the same or a different profile and confirm it comes back
-    correctly (round-trip). Then import a deliberately malformed file (bad
-    date, non-numeric amount, unrecognized category name) and confirm the
-    response clearly reports which rows failed and why, which imported
-    with a warning, and that only the genuinely valid rows actually landed.
+The API looks for Ollama at `http://127.0.0.1:11434`. If it can't reach it, the scan button explains that, and you can enter the transaction by hand.
 
-For automated backend testing, `curl` or a tool like Postman can exercise
-the endpoints in the API table above — every route returns JSON and
-standard HTTP status codes (`400` invalid input, `401` unauthenticated,
-`404` not found/not owned, `409` conflict).
+---
 
-## Deployment (free tier)
+## Configuration
 
-Three pieces now, deployed independently: **GitHub Pages** serves the
-static frontend, a **Postgres provider** hosts the database, and a
-**Node host** runs the Express API in between. Because the database is
-external, the API host doesn't need persistent disk the way the SQLite
-version did — the container can be fully ephemeral and the data survives
-regardless.
+Everything is set in `backend/.env`. `backend/.env.example` lists every option with notes. The main ones:
 
-**Recommended free combination: Neon (Postgres) + Render (backend) +
-GitHub Pages (frontend).**
-
-1. **Push this repo to GitHub** if you haven't already (`git init`,
-   commit, create a repo on github.com, `git remote add origin ...`,
-   `git push -u origin main`).
-
-2. **Create a free Postgres database.** [Neon](https://neon.tech) and
-   [Supabase](https://supabase.com) both have permanent free tiers (unlike
-   Render's Postgres, which is free for 90 days and then deleted). Either
-   one works the same way here — create a project, and copy the connection
-   string it gives you. It'll look like:
-   ```
-   postgresql://user:password@ep-something.region.aws.neon.tech/dbname?sslmode=require
-   ```
-   That `sslmode=require` matters — `db/index.js` detects it automatically
-   and enables SSL, which these providers require.
-
-3. **Generate a real JWT secret** — don't reuse the placeholder in
-   `.env.example`:
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-   ```
-   Keep it somewhere safe; it goes into Render's environment variables
-   next, never into the repo.
-
-4. **Deploy the backend on Render** (free web service):
-   - New Web Service → connect your GitHub repo → root directory `backend`
-   - Build command: `npm install`
-   - **Start command: `npm run migrate && npm start`** — this is the part
-     that matters for upgrade compatibility. Every deploy runs pending
-     migrations against your Neon/Supabase database before the server
-     starts accepting traffic, so pushing a future update never requires
-     manually touching the database.
-   - Environment variables: `DATABASE_URL` (from step 2), `JWT_SECRET`
-     (from step 3), `CORS_ORIGIN` (your GitHub Pages URL — add this after
-     step 6, once you know it), and `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/
-     `SMTP_FROM` so password reset links are emailed instead of written to
-     the server log (see `backend/.env.example`).
-   - No persistent disk needed this time — the database lives in Neon/Supabase,
-     not on this container.
-   - Optional one-time step: open Render's shell for the service and run
-     `npm run seed` if you want the demo account and sample data live.
-     Skip this for a real deployment with only real user accounts.
-
-5. **Set up GitHub Pages**: repo Settings → Pages → Source: "GitHub
-   Actions" (not "Deploy from a branch" — the included workflow handles
-   the build itself). Then repo Settings → Secrets and variables → Actions
-   → Variables → New repository variable: `VITE_API_URL` set to your
-   Render backend URL plus `/api`, e.g.
-   `https://your-backend.onrender.com/api`.
-
-6. **Deploy the frontend**: the included `.github/workflows/deploy-pages.yml`
-   runs automatically on every push to `main` — build it, upload it,
-   publish it. Push a commit (or trigger it manually from the Actions tab)
-   and watch it run. Your site ends up at
-   `https://<your-username>.github.io/<repo-name>/`.
-
-7. **Close the loop on CORS**: go back to Render's environment variables
-   and set `CORS_ORIGIN` to your GitHub Pages URL from step 6, then
-   redeploy the backend so it accepts requests from the deployed frontend
-   instead of just `localhost`.
-
-8. **Verify**: open the Pages URL, register an account (or sign in with
-   the demo account if you seeded it), add a transaction, confirm it
-   appears on the dashboard.
-
-**What "upgrade compatibility" gets you going forward:** when you make a
-future change locally — add a table, add a column, add a new migration
-file — you just `git push`. Render rebuilds and runs `npm run migrate` as
-part of the start command, GitHub Actions rebuilds the frontend, and your
-existing users' data in Neon/Supabase carries forward untouched. No manual
-database surgery, no coordinating a maintenance window.
-
-**Trade-offs of the free tier, worth knowing going in:**
-- Render's free web services **spin down after ~15 minutes of
-  inactivity** and take a few seconds to wake back up on the next request
-  — fine for a personal project, noticeable if you show it to someone cold.
-- Neon's free tier also has its own auto-suspend behavior (a few seconds
-  of "cold" latency on the first query after idle) and a storage cap that's
-  generous for personal use but worth checking against your plans.
-- GitHub Pages is a **public** URL by default on a public repo — anyone
-  with the link can reach the login page (they still need real
-  credentials to see any data, but if that visibility bothers you, GitHub
-  Pages on a private repo requires GitHub Enterprise; a plain custom
-  domain behind Vercel/Netlify with access controls is the alternative).
-- `HashRouter` means URLs look like
-  `your-site.github.io/repo/#/transactions` instead of a clean path — a
-  reasonable trade for not needing server-side rewrite rules, but worth
-  knowing if clean URLs matter to you (achievable with a `404.html`
-  redirect trick instead, at the cost of more moving parts).
-- Alternatives: Fly.io's free allowance also works for the backend;
-  Supabase can replace Neon for Postgres and additionally offers its own
-  auth/storage if you ever want to lean on it instead of this app's own
-  JWT auth; Vercel/Netlify remain fine alternatives to GitHub Pages for
-  the frontend if you'd rather avoid the hash-routing trade-off (just
-  swap `HashRouter` back to `BrowserRouter` in `App.jsx` — those hosts
-  support the server-side rewrites that need).
-
-## Install on your phone
-
-The site is an installable web app: it gets its own home-screen icon and
-opens full screen, with no browser bar and no app store.
-
-- **iPhone (Safari):** open the site → Share → **Add to Home Screen**.
-- **Android (Chrome):** open the site → ⋮ menu → **Add to home screen /
-  Install app** (Chrome may also offer it in a banner).
-
-What makes this work, all in `frontend/`:
-
-| File | Purpose |
+| Variable | What it's for |
 |---|---|
-| `public/manifest.webmanifest` | App name, colours, icons. Every path in it is relative, so it works under `/WebBudget/` on Pages and at `/` anywhere else. |
-| `public/icons/` | 192 and 512 px icons plus a maskable one (Android crops it to a circle or squircle), rendered from `favicon.svg`. |
-| `public/sw.js` | A small service worker: page loads are network-first (a new deploy shows up on the next open), hashed `assets/` files are cached, and **API requests are never cached**. |
-| `src/main.jsx` | Registers the service worker in production builds only. |
+| `DATABASE_URL` | Postgres connection string. `?sslmode=require` (as Neon and Supabase give you) turns on SSL |
+| `JWT_SECRET` | **Required.** A long random string; the server won't start without it |
+| `CORS_ORIGIN` | Where the web app runs. Takes a comma-separated list, so two sites can share one API while you move |
+| `TRUST_PROXY` | How many proxies sit in front of the API, so rate limits see real IPs. Automatic on Render |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `APP_URL` | Sending password-reset emails. Without them, the reset link is printed to the server console |
+| `OLLAMA_URL`, `OLLAMA_MODEL` | The local model used for scanning and for categorizing imports |
+| `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`, `SNAPTRADE_OWNER_EMAIL` | Optional automatic Wealthsimple sync |
+| `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | Optional. Without them the Reddit widget uses RSS and shows no upvote counts |
+| `NEWS_FEEDS` | Optional. Replaces the default news feeds |
 
-Updating the app is the same as updating the site: push to `main`. There's
-nothing to reinstall.
+The frontend has one setting, `VITE_API_URL`, used for production builds. In development, Vite passes `/api` through to `localhost:4000`.
 
-## Moving to self-hosting
+---
 
-Nothing here is tied to GitHub Pages, Render or Neon: the frontend is a
-folder of static files, the API is a plain Node process, and the database
-is ordinary Postgres. To move:
+## Tests
 
-1. **Database:** `pg_dump "<Neon connection string>" > ledger.sql`, then
-   `psql "<your Postgres>" < ledger.sql`. Accounts and data come across
-   as they are.
-2. **API:** run `backend/` with Node (`npm run migrate && npm start`),
-   with `DATABASE_URL` pointing at your Postgres, the **same**
-   `JWT_SECRET` (or everyone simply signs in again), and `CORS_ORIGIN`
-   set to the new site's address. `CORS_ORIGIN` takes a comma-separated
-   list, so the old and new sites can both use the API while you switch.
-3. **Frontend:** `cd frontend && VITE_API_URL=https://<your-api>/api npm run build`
-   (leave `BASE_PATH` unset for a site at `/`), and serve `frontend/dist/`
-   from any web server: Caddy, nginx, or the same box as the API. An API
-   behind the same domain at `/api` works too (`VITE_API_URL=/api`); the
-   service worker leaves `/api/` alone.
+```bash
+cd backend  && npm test     # API tests against real Postgres
+cd frontend && npm test     # layout, format and payoff logic
+```
 
-Two things to know:
+- **Isolated:** each backend test file creates and then drops its own Postgres schema, so tests never touch your data and can run in parallel.
+- **Offline:** outside services (Yahoo, RSS, Reddit, SnapTrade, the local model) are replaced by small fake servers, so the suite runs offline.
+- **CI:** `.github/workflows/tests.yml` runs both suites on every pull request and on `main`.
 
-- **The site needs HTTPS** for phones to install it (plain
-  `http://192.168.x.x` won't). Easy ways at home: Tailscale (`tailscale
-  serve` gives your machine an HTTPS address on your own devices),
-  Cloudflare Tunnel, or a domain pointed at Caddy, which gets
-  certificates by itself.
-- **An installed app belongs to its address.** If the site moves to a new
-  address, remove the old home-screen icon, install from the new one and
-  sign in again. Your data is in the database, so nothing is lost.
+---
 
-## Feature ideas worth considering
+## Project layout
 
-Beyond the smaller fixes in "Future improvements" above, here are bigger
-product directions that would meaningfully extend what this app does.
-None of these are built — they're brainstormed starting points if you want
-to keep growing this beyond a transaction tracker.
+```
+backend/
+  server.js, app.js        start-up, and the Express app with every route mounted
+  db/                      connection pool, migration runner, migrations/001 ... 019
+  routes/                  one file per area: auth, transactions, budgets, bills, goals,
+                           networth, investments, payoff, debts, dashboard, news, reddit, scan ...
+  utils/                   the logic, kept testable: bank import, recurring detection, quotes,
+                           payoff maths, debt splitting, RSS/Reddit readers, mail
+  middleware/              auth (JWT and token version), input validation
+  test/                    API tests (node:test)
+  seed.js                  demo data
+frontend/
+  src/pages/               one page per menu item
+  src/components/          forms, cards, and the dashboard grid and widgets (components/dashboard/)
+  src/utils/               formatting, category colours, scan image prep, payoff maths
+  public/                  icons, web app manifest, service worker
+DESIGN.md, PRODUCT.md      the design system and who the app is for
+docs/                      architecture, API reference, deployment
+```
 
-**Investing & net worth**
-- **Stock/investment portfolio tracker**: a new `holdings` table (ticker,
-  shares, cost basis, account) plus a market-data API (e.g. Alpha Vantage,
-  Finnhub, or IEX Cloud all have free tiers) to show current value and
-  gain/loss alongside the existing cash-flow dashboard.
-- **Net worth over time**: combine cash (from transactions) with manually
-  entered assets and liabilities (home value, loan balances, investment
-  accounts) into a single trend line — most personal finance apps treat
-  this as the "headline" number, and this app doesn't have one yet.
-- **Debt payoff planner**: snowball/avalanche payoff schedules for
-  loans/credit cards, with a projected payoff date that updates as
-  payments are logged.
+---
 
-**Automation & intelligence**
-- **Bank account sync** via Plaid or a similar aggregator, so transactions
-  import automatically instead of manual entry — the biggest scope jump on
-  this list, since it means handling OAuth-style bank linking, webhook
-  updates, and reconciling duplicate/pending transactions.
-- **Receipt scanning**: photograph or upload a receipt, OCR it (e.g. with
-  a hosted vision API), and pre-fill the transaction form.
-- **Anomaly / insight detection**: flag "this category is 40% higher than
-  your 6-month average" or detect a subscription's price quietly went up
-  between billing cycles.
-- **Auto-categorization**: suggest a category based on the description,
-  learned from how the user has categorized similar transactions before.
+## More documentation
 
-**Household & goals**
-- **Savings goals**: a target amount and date per goal (e.g. "vacation
-  fund"), with progress tracked against contributions - pairs naturally
-  with the existing profile/household model.
-- **Per-category budgets with alerts**: already listed above as a smaller
-  version of this; the fuller version would show a live progress bar per
-  category on the dashboard and support rollover of unused budget.
-- **Bill payment reminders**: push/email notifications a few days before a
-  recurring bill is due, built on top of the `bills` table behind the
-  Bills page.
+- **[Architecture and data model](docs/architecture.md):** how the pieces fit, every table, how money and dates are stored, households, security, and how to write a migration.
+- **[API reference](docs/api.md):** every endpoint.
+- **[Deployment](docs/deployment.md):** the free-hosting setup (Neon, Render, GitHub Pages), moving to your own server, installing on a phone, and running the scanner when the API is in the cloud.
+- **[DESIGN.md](DESIGN.md):** colours, type, components and the rules behind them.
+- **[PRODUCT.md](PRODUCT.md):** who it's for and what it should feel like.
 
-**Reporting & export**
-- **CSV/PDF export** of transactions or a monthly summary report, for
-  taxes or sharing with an accountant.
-- **Year-in-review report**: an annual summary — biggest spending
-  category, income growth, savings rate — generated once a year like a
-  lot of finance apps do in January.
+---
 
-**Mobile & accessibility**
-- **A proper installable mobile app** (React Native or a PWA wrapper)
-  rather than a mobile-responsive web layout, for offline access and home
-  screen installability.
-- **Voice or quick-add entry**: a single-line natural-language input
-  ("$12 coffee today") that gets parsed into amount/category/date, for
-  faster logging on the go.
+## Notes
 
-## Future improvements
-
-- Add refresh tokens / shorter-lived access tokens instead of a single 7-day JWT.
-- **Connection pooling at scale**: the `pg.Pool` default settings are fine
-  for a personal project; a busier deployment would want to tune pool size
-  against whatever connection limit your Postgres provider's free tier
-  imposes (Neon and Supabase both cap free-tier connection counts).
-- **Email delivery for invites**: right now inviting someone into a
-  household only surfaces as a badge/card the next time they log in —
-  there's no actual email sent. Adding one (e.g. via Resend, Postmark, or
-  SES) would make invites discoverable without asking the person to check.
-- Auto-generate transactions from active subscriptions/recurring bills on
-  their due dates (currently they're tracked but not auto-posted).
-- Budgets per category with over-budget alerts, including per-profile budgets.
-- Automated test suite (Jest/Supertest for the API, Playwright for the UI) —
-  this build was verified manually and via `curl` smoke tests, but doesn't
-  ship with a test runner.
+- **Not a bank.** Balances and transactions are what you enter or import. The only automatic connection is the optional SnapTrade sync for investments.
+- **Unofficial data sources.** Stock prices come from Yahoo Finance's public chart endpoint, and news comes from public RSS feeds. Either can change without notice. Both are cached, and the app keeps working with the last good data.
+- **License.** No license has been chosen yet, so all rights are reserved by default.
