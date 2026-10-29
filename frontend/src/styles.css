@@ -495,6 +495,13 @@ table.ledger td.col-by { color: var(--ink-soft); font-size: 13px; white-space: n
 .due { font-size: 13px; color: var(--ink-soft); }
 .due.overdue { color: var(--negative); font-weight: 700; }
 table.ledger tbody tr.pay-row, table.ledger tbody tr.pay-row:hover { background: var(--accent-soft); }
+/* Editing a transaction in place: the row being edited and the form that
+   opens under it read as one block. */
+table.ledger tbody tr.editing-row, table.ledger tbody tr.editing-row:hover { background: var(--accent-soft); }
+table.ledger tbody tr.editing-row td { border-bottom: none; }
+table.ledger tbody tr.edit-row, table.ledger tbody tr.edit-row:hover { background: var(--accent-soft); }
+table.ledger tbody tr.edit-row > td { padding: 0 10px 14px; }
+table.ledger tbody tr.edit-row .card { margin: 0 !important; box-shadow: none; border-color: var(--accent); }
 
 .select-hint { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 13px; color: var(--ink-soft); }
 
@@ -762,5 +769,9 @@ button.tag:hover { border-color: var(--accent); }
   /* Bills: the inline "mark paid" form row spans the full width. */
   table.ledger.stack tbody tr.pay-row::after { display: none; }
   table.ledger.stack tbody tr.pay-row td { flex: 1 1 100%; }
+  table.ledger.stack tbody tr.edit-row { padding: 0 0 12px; }
+  table.ledger.stack tbody tr.edit-row::after { display: none; }
+  table.ledger.stack tbody tr.edit-row > td { flex: 1 1 100%; padding: 0; }
+  table.ledger.stack tbody tr.editing-row { border-bottom: none; }
   table.ledger.stack .only-stacked { display: inline; }
 }

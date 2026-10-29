@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import client from '../api/client';
 import TransactionForm from '../components/TransactionForm.jsx';
@@ -163,10 +163,21 @@ export default function Transactions() {
     load();
   }
 
+  // A row near the bottom of the screen opens its form below the fold;
+  // bring the form into view, moving the page only as far as needed.
+  useEffect(() => {
+    if (!editing) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById(`edit-${editing.id}`)?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [editing]);
+
+  // Saves in place: the updated row replaces the old one where it sits,
+  // rather than reloading the list (which would drop anything brought in
+  // with "Load more" and lose the user's place).
   async function handleEdit(payload) {
-    await client.put(`/transactions/${editing.id}`, payload);
+    const { data } = await client.put(`/transactions/${editing.id}`, payload);
+    setTransactions((rows) => rows.map((r) => (r.id === data.id ? data : r)));
     setEditing(null);
-    load();
   }
 
   async function handleDelete(id) {
@@ -270,8 +281,8 @@ export default function Transactions() {
           <button className="btn btn-secondary" onClick={handleExport} disabled={exportBusy || total === 0}>
             {exportBusy ? 'Exporting…' : 'Export CSV'}
           </button>
-          {!showForm && !editing && (
-            <button className="btn btn-primary" onClick={() => setShowForm(true)}>Add transaction</button>
+          {!showForm && (
+            <button className="btn btn-primary" onClick={() => { setShowForm(true); setEditing(null); }}>Add transaction</button>
           )}
         </div>
       </div>
@@ -311,9 +322,6 @@ export default function Transactions() {
 
       {showForm && (
         <TransactionForm categories={categories} onSubmit={handleAdd} onCancel={() => setShowForm(false)} />
-      )}
-      {editing && (
-        <TransactionForm categories={categories} initial={editing} onSubmit={handleEdit} onCancel={() => setEditing(null)} />
       )}
 
       {/* Always visible, on phones too: finding one transaction is the
@@ -442,7 +450,8 @@ export default function Transactions() {
             </thead>
             <tbody>
               {transactions.map((t, idx) => (
-                <tr key={t.id}>
+                <Fragment key={t.id}>
+                <tr className={editing?.id === t.id ? 'editing-row' : undefined}>
                   <td className="select-col">
                     <input
                       type="checkbox"
@@ -459,11 +468,26 @@ export default function Transactions() {
                   <td className={`amount col-amount ${t.type}`}>{t.type === 'income' ? '+' : '−'}{formatMoney(t.amount, { currency })}</td>
                   <td className="col-actions">
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(t); setShowForm(false); }}>Edit</button>
+                      <button className="btn btn-secondary btn-sm" aria-expanded={editing?.id === t.id}
+                              aria-controls={`edit-${t.id}`}
+                              onClick={() => { setEditing(editing?.id === t.id ? null : t); setShowForm(false); }}>
+                        {editing?.id === t.id ? 'Close' : 'Edit'}
+                      </button>
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(t.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>
+                {/* The edit form opens right under its row, so editing a
+                    transaction far down the list never means scrolling
+                    back to the top and losing your place. */}
+                {editing?.id === t.id && (
+                  <tr className="edit-row" id={`edit-${t.id}`}>
+                    <td colSpan={isShared ? 8 : 7}>
+                      <TransactionForm categories={categories} initial={editing} onSubmit={handleEdit} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
